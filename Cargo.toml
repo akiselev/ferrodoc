@@ -1,0 +1,98 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/ferrodoc-core",
+  "crates/ferrodoc-ir",
+  "crates/ferrodoc-protocol",
+  "crates/ferrodoc-plugin-sdk",
+  "crates/ferrodoc-plugin-host",
+  "crates/ferrodoc-pdf",
+  "crates/ferrodoc-planner",
+  "crates/ferrodoc-scheduler",
+  "crates/ferrodoc-model-store",
+  "crates/ferrodoc-render",
+  "crates/ferrodoc-pipeline",
+  "crates/ferrodoc-foundry",
+  "crates/ferrodoc-bench",
+  "crates/ferrodoc-router",
+  "crates/ferrodoc-research",
+  "crates/ferrodoc-cli",
+  "crates/ferrodoc-batteries",
+  "crates/xtask",
+  "plugins/ferrodoc-engine-mock",
+  "plugins/ferrodoc-engine-oar",
+  "plugins/ferrodoc-engine-oar-classic",
+  "plugins/ferrodoc-engine-command",
+  "plugins/ferrodoc-engine-tesseract",
+  "plugins/ferrodoc-engine-ocrs",
+  "plugins/ferrodoc-engine-llamacpp",
+  "plugins/ferrodoc-engine-mistralrs",
+  "plugins/ferrodoc-engine-remote",
+  "plugins/ferrodoc-engine-mistral",
+  "plugins/ferrodoc-engine-ort",
+  "plugins/ferrodoc-engine-burn",
+  "plugins/ferrodoc-layout-rulebased",
+]
+default-members = ["crates/ferrodoc-cli"]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+authors = ["Ferrodoc contributors"]
+
+[workspace.dependencies]
+anyhow = "1.0"
+base64 = "0.22"
+bytes = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+ciborium = "0.2"
+clap = { version = "4.5", features = ["derive", "env"] }
+directories = "6.0"
+font8x8 = "0.3"
+hex = "0.4"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
+hayro = "0.7"
+nvml-wrapper = "0.12.1"
+ocrs = { version = "0.12.2", default-features = false, features = ["rten"] }
+rten = { version = "0.25.0", default-features = false, features = ["rten_format"] }
+oar-ocr = { version = "0.8", default-features = false, features = ["download-binaries", "simd"] }
+oar-ocr-core = { version = "0.8", default-features = false }
+oar-ocr-vl = { version = "0.8", default-features = false }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "download-binaries", "ndarray"] }
+ndarray = "0.17"
+burn = { version = "0.21", default-features = false, features = ["std"] }
+burn-flex = "0.21"
+tokio = { version = "1.53", features = ["rt-multi-thread", "sync"] }
+lopdf = "0.36"
+once_cell = "1.20"
+rand = "0.8"
+rayon = "1.10"
+regex = "1.11"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+schemars = { version = "0.8", features = ["chrono", "uuid1"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+sysinfo = "0.33"
+tempfile = "3.17"
+thiserror = "2.0"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1.12", features = ["v4", "serde"] }
+walkdir = "2.5"
+parking_lot = "0.12"
+libloading = "0.8"
+llama-cpp-4 = { version = "0.4.2", default-features = false, features = ["mtmd"] }
+mistralrs = { version = "0.9.0", default-features = false }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+
+[profile.dev.package.image]
+opt-level = 2
