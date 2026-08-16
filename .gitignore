@@ -1,0 +1,7 @@
+/target
+/.ferrodoc
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.profraw
+.DS_Store
