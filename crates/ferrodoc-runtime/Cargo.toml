@@ -22,6 +22,8 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 nvml-wrapper = { version = "0.11", optional = true }
+uuid.workspace = true
 
 [dev-dependencies]
 ferrodoc-core = { path = "../ferrodoc-core" }
+tempfile.workspace = true

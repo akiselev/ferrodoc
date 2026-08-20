@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod hardware;
+pub mod model_store;
 mod process;
 
 pub use process::{PluginCommand, ProcessConfig, ProcessEngine};
