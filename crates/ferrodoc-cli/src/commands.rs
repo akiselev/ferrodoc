@@ -88,7 +88,7 @@ impl CommandError {
 pub fn run(command: Command) -> Result<(), CommandError> {
     match command {
         Command::Version => println!("ferrodoc {}", env!("CARGO_PKG_VERSION")),
-        Command::Status => println!("Ferrodoc Phase 6 qualified engine runtime"),
+        Command::Status => println!("Ferrodoc Phase 7 guarded routing runtime"),
         Command::Hardware => print_json(&ferrodoc_runtime::hardware::inventory())?,
         Command::Models(command) => run_models(command)?,
         Command::PluginsDoctor(arguments) => plugins_doctor(arguments)?,
