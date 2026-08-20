@@ -1,6 +1,6 @@
 # Status
 
-- Phases 0 through 3 are complete and merged locally; remote review and branch protection remain release operations.
-- Phase 3 delivered bounded versioned framing, a hardened process host, scoped blobs, fault injection, and semantic parity for mock, layout, and OCRS engines.
-- Phase 4 is in progress from `58137d5` on `phase-4/resource-runtime`.
-- Current work: content-addressed model storage, hardware inventory, constrained planning, resource leases, and deterministic caching.
+- Phases 0 through 4 are complete and merged locally; remote review and branch protection remain release operations.
+- Phase 4 delivered atomic model storage, sourced hardware inventory, hard-constraint planning, resource leases, deterministic stage caching, and real CLI diagnostics.
+- Phase 5 is in progress from `b9e1bcf` on `phase-5/trustworthy-benchmarks`.
+- Current work: deterministic foundry generation, non-vacuous benchmark schemas and metrics, measurement, and Pareto comparison.
