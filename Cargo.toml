@@ -22,6 +22,7 @@ members = [
   "tools/xtask",
 ]
 default-members = ["crates/ferrodoc-core"]
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.2.0"
@@ -29,13 +30,15 @@ edition = "2024"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
 authors = ["Ferrodoc contributors"]
+repository = "https://github.com/akiselev/ferrodoc"
+homepage = "https://github.com/akiselev/ferrodoc"
 
 [workspace.dependencies]
 chrono = { version = "0.4", features = ["serde"] }
 ciborium = "0.2"
 hex = "0.4"
 hayro = "0.7.0"
-lopdf = { version = "0.36.0", default-features = false }
+lopdf = { version = "0.44.0", default-features = false }
 ocrs = "0.12.2"
 proptest = "1.7"
 schemars = "0.8"

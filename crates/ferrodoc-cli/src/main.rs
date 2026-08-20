@@ -5,7 +5,7 @@ mod output;
 
 use std::process::ExitCode;
 
-use serde::Serialize;
+use ferrodoc::{CliErrorEnvelope, EXIT_ERROR};
 
 fn main() -> ExitCode {
     match args::parse()
@@ -15,26 +15,12 @@ fn main() -> ExitCode {
         }) {
         Ok(()) => ExitCode::SUCCESS,
         Err((category, message)) => {
-            #[derive(Serialize)]
-            struct ErrorEnvelope<'a> {
-                error: ErrorBody<'a>,
-            }
-            #[derive(Serialize)]
-            struct ErrorBody<'a> {
-                category: &'a str,
-                message: &'a str,
-            }
-            let envelope = ErrorEnvelope {
-                error: ErrorBody {
-                    category,
-                    message: &message,
-                },
-            };
+            let envelope = CliErrorEnvelope::new(category, message);
             eprintln!(
                 "{}",
                 serde_json::to_string(&envelope).expect("error envelope is serializable")
             );
-            ExitCode::from(2)
+            ExitCode::from(EXIT_ERROR)
         }
     }
 }

@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
 description = "Offline evidence-preserving document conversion"
 
 [features]
@@ -31,5 +34,6 @@ ferrodoc-router = { path = "../ferrodoc-router" }
 ferrodoc-runtime = { path = "../ferrodoc-runtime" }
 serde.workspace = true
 serde_json.workspace = true
+schemars.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true

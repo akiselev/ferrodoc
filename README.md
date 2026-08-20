@@ -4,13 +4,13 @@ Ferrodoc is a pre-release Rust project for offline, evidence-preserving document
 
 ## Current status
 
-Repository recovery through the Phase 7 routing and research loop is implemented, including the qualified engine portfolio, foundry, and integrity-first benchmark loop. Born-digital PDFs convert without models. Scanned and hybrid PDFs use the pure-Rust OCRS engine when an explicit verified model pair is supplied. Engines can run embedded or over the bounded process protocol; conversion applies explainable hard constraints, scheduler leases, and an optional deterministic stage cache.
+The verified v0.2 release candidate includes offline conversion, the qualified engine portfolio, integrity-first benchmarking, and guarded routing/research. Born-digital PDFs convert without models. Scanned and hybrid PDFs use the pure-Rust OCRS engine when an explicit verified model pair is supplied. Engines can run embedded or over the bounded process protocol; conversion applies explainable hard constraints, scheduler leases, and an optional deterministic stage cache.
 
 Phase 6 qualifies the native PDF, rule-based layout, OCRS, deterministic mock, optional Tesseract C-API, and experimental no-shell command boundaries. The default `cpu-minimal` and `process-engines` features remain pure Rust and network-free. See the [qualified engine portfolio](docs/engines/README.md).
 
 Phase 7 adds digest-bound routing examples, deterministic baselines, guarded learned recommendations, and an immutable experiment ledger. The fixed routing calibration is intentionally negative: its stump does not beat the deterministic held-out baseline and is therefore rejected rather than enabled. See [routing and research](docs/research.md).
 
-The implementation sequence and acceptance gates are defined in [PLAN.md](PLAN.md). Current work is summarized in [STATUS.md](STATUS.md), and the discarded source payload is documented in [docs/recovery-inventory.md](docs/recovery-inventory.md).
+The implementation sequence and acceptance gates are defined in [PLAN.md](PLAN.md). Current work is summarized in [STATUS.md](STATUS.md). CLI and protocol compatibility are documented in [docs/cli.md](docs/cli.md) and [docs/protocol.md](docs/protocol.md); security and release policy are in [docs/security.md](docs/security.md) and [docs/release.md](docs/release.md).
 
 ## Prerequisites
 
@@ -30,6 +30,7 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 ./scripts/smoke.sh
 ./scripts/benchmark-smoke.sh
 ./scripts/routing-smoke.sh
+./scripts/readme-smoke.sh
 ```
 
 ## Quick start
@@ -75,3 +76,7 @@ The experimental command wrapper requires a trusted `FERRODOC_COMMAND_CONFIG`, a
 - Plugin stdout is reserved for framed protocol traffic.
 
 Ferrodoc is dual-licensed under MIT or Apache-2.0.
+
+## Roadmap
+
+Post-v0.2 work may add specialized table, formula, handwriting, and document-VLM engines; richer reconciliation; larger independently governed benchmarks; region-level routing; and platform sandboxes. These are not qualified v0.2 capabilities. See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) and the plan's post-v0.2 roadmap.

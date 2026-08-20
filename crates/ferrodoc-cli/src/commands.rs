@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs::{self, File},
+    io::Read,
+    path::Path,
+};
 
 use ferrodoc_core::{
     BlobId, BlobRange, Capability, MediaType, ModelManifest, RequestId, ScopedBlob, Sha256Digest,
@@ -38,6 +43,11 @@ pub enum CommandError {
         path: std::path::PathBuf,
         source: std::io::Error,
     },
+    #[error("input {path:?} exceeds the {maximum} byte PDF acquisition limit")]
+    InputTooLarge {
+        path: std::path::PathBuf,
+        maximum: u64,
+    },
     #[error(transparent)]
     Pdf(#[from] ferrodoc_pdf::PdfError),
     #[error(transparent)]
@@ -66,6 +76,7 @@ impl CommandError {
                 "missing_input"
             }
             Self::Read { .. } | Self::Output(_) => "io",
+            Self::InputTooLarge { .. } => "limit_exceeded",
             Self::Pdf(ferrodoc_pdf::PdfError::Malformed(_)) => "malformed_pdf",
             Self::Pdf(ferrodoc_pdf::PdfError::Encrypted) => "encrypted_pdf",
             Self::Pdf(ferrodoc_pdf::PdfError::Unsupported(_)) => "unsupported_pdf",
@@ -95,7 +106,7 @@ pub fn run(command: Command) -> Result<(), CommandError> {
         Command::Router(command) => run_router(command)?,
         Command::Research(command) => run_research(command)?,
         Command::Inspect { input } => {
-            let bytes = read(&input)?;
+            let bytes = read_pdf(&input)?;
             let pdf = PdfDocument::from_bytes(bytes, PdfLimits::default())?;
             print_json(pdf.inspection())?;
         }
@@ -104,17 +115,10 @@ pub fn run(command: Command) -> Result<(), CommandError> {
             let pipeline = converter.plan(&bytes)?;
             let inventory = ferrodoc_runtime::hardware::inventory();
             let resource_plans = converter.resource_plans(&inventory)?;
-            #[derive(Serialize)]
-            struct PlanOutput<'a> {
-                #[serde(flatten)]
-                pipeline: &'a ferrodoc_runtime::ConversionPlan,
-                inventory: &'a ferrodoc_engine_api::HardwareInventory,
-                resource_plans: &'a [ferrodoc_runtime::planner::PlanningReport],
-            }
-            print_json(&PlanOutput {
-                pipeline: &pipeline,
-                inventory: &inventory,
-                resource_plans: &resource_plans,
+            print_json(&ferrodoc::PlanOutput {
+                pipeline,
+                inventory,
+                resource_plans,
             })?;
         }
         Command::Explain(arguments) => {
@@ -382,7 +386,7 @@ fn convert(arguments: ConvertArgs) -> Result<(), CommandError> {
 
 fn converter_and_input(arguments: PipelineArgs) -> Result<(Converter, Vec<u8>), CommandError> {
     let configuration = Configuration::load(arguments)?;
-    let bytes = read(&configuration.input)?;
+    let bytes = read_pdf(&configuration.input)?;
     let mut converter = load_converter(
         configuration.options,
         &configuration.ocr_engine,
@@ -420,6 +424,39 @@ fn read(path: &Path) -> Result<Vec<u8>, CommandError> {
         path: path.to_owned(),
         source,
     })
+}
+
+fn read_pdf(path: &Path) -> Result<Vec<u8>, CommandError> {
+    let maximum = PdfLimits::default().maximum_input_bytes.get();
+    let mut file = File::open(path).map_err(|source| CommandError::Read {
+        path: path.to_owned(),
+        source,
+    })?;
+    let metadata = file.metadata().map_err(|source| CommandError::Read {
+        path: path.to_owned(),
+        source,
+    })?;
+    if metadata.len() > maximum {
+        return Err(CommandError::InputTooLarge {
+            path: path.to_owned(),
+            maximum,
+        });
+    }
+    let mut bytes = Vec::with_capacity(metadata.len().min(maximum) as usize);
+    file.by_ref()
+        .take(maximum.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|source| CommandError::Read {
+            path: path.to_owned(),
+            source,
+        })?;
+    if bytes.len() as u64 > maximum {
+        return Err(CommandError::InputTooLarge {
+            path: path.to_owned(),
+            maximum,
+        });
+    }
+    Ok(bytes)
 }
 
 fn print_json(value: &impl Serialize) -> Result<(), CommandError> {

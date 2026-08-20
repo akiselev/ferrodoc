@@ -12,4 +12,4 @@
 - Tesseract discovery is runtime/platform dependent and embedded recognition cannot be interrupted inside a native call; process isolation is recommended. Successfully loaded native libraries remain pinned until process exit to avoid unsafe third-party runtime teardown.
 - The command engine is an administrator-controlled experimental boundary. It cannot use a shell implicitly, but Ferrodoc cannot attest to the behavior, licensing, network access, or quality of an allowlisted third-party executable.
 - The archived source import was truncated. Its complete original tree cannot be reconstructed from the committed fragments.
-- Branch protection and required checks are repository settings and must be enabled after the Phase 0 change is merged.
+- Branch protection and required checks are remote repository settings. The checked policy is `.github/required-checks.json`, but the v0.2 tag must not be created until maintainers verify those settings are active and every required check is green.

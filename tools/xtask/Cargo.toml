@@ -5,5 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
 publish = false
 description = "Repository maintenance checks for Ferrodoc"

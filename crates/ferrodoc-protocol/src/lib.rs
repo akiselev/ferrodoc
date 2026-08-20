@@ -82,9 +82,16 @@ pub fn write_frame<T: Serialize>(
     negotiated_maximum: u32,
 ) -> Result<(), ProtocolError> {
     let maximum = negotiated_maximum.min(MAX_FRAME_LENGTH);
-    let mut payload = Vec::new();
-    ciborium::ser::into_writer(value, &mut payload)
-        .map_err(|error| ProtocolError::MalformedCbor(error.to_string()))?;
+    let mut payload = BoundedBuffer::new(maximum as usize);
+    let encoded = ciborium::ser::into_writer(value, &mut payload);
+    if payload.exceeded {
+        return Err(ProtocolError::FrameLength {
+            actual: maximum.saturating_add(1),
+            maximum,
+        });
+    }
+    encoded.map_err(|error| ProtocolError::MalformedCbor(error.to_string()))?;
+    let payload = payload.into_inner()?;
     let length = u32::try_from(payload.len()).unwrap_or(u32::MAX);
     if length == 0 || length > maximum {
         return Err(ProtocolError::FrameLength {
@@ -96,6 +103,50 @@ pub fn write_frame<T: Serialize>(
     writer.write_all(&payload)?;
     writer.flush()?;
     Ok(())
+}
+
+struct BoundedBuffer {
+    bytes: Vec<u8>,
+    maximum: usize,
+    exceeded: bool,
+}
+
+impl BoundedBuffer {
+    fn new(maximum: usize) -> Self {
+        Self {
+            bytes: Vec::new(),
+            maximum,
+            exceeded: false,
+        }
+    }
+
+    fn into_inner(self) -> Result<Vec<u8>, ProtocolError> {
+        if self.exceeded {
+            Err(ProtocolError::FrameLength {
+                actual: u32::try_from(self.maximum.saturating_add(1)).unwrap_or(u32::MAX),
+                maximum: u32::try_from(self.maximum).unwrap_or(u32::MAX),
+            })
+        } else {
+            Ok(self.bytes)
+        }
+    }
+}
+
+impl Write for BoundedBuffer {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if bytes.len() > self.maximum.saturating_sub(self.bytes.len()) {
+            self.exceeded = true;
+            return Err(io::Error::other(
+                "encoded protocol frame exceeds hard limit",
+            ));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 /// Reads one bounded length-prefixed CBOR item, rejecting size before allocation.
@@ -302,6 +353,18 @@ mod tests {
         assert!(matches!(
             read_frame::<HostMessage>(&mut Cursor::new(framed), 1024),
             Err(ProtocolError::MalformedCbor(_))
+        ));
+    }
+
+    #[test]
+    fn serialization_is_bounded_during_encoding() {
+        let error = write_frame(&mut Vec::new(), &"x".repeat(1024), 16).unwrap_err();
+        assert!(matches!(
+            error,
+            ProtocolError::FrameLength {
+                actual: 17,
+                maximum: 16
+            }
         ));
     }
 

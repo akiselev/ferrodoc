@@ -994,8 +994,8 @@ Every phase PR updates this table. Use only: `planned`, `in progress`, `blocked`
 | 4 — resource runtime | complete | local merge | `58137d5` | 113 tests, real-model store/doctor/cache checks, offline smoke, and Lightbulb resource regressions passed; merged as `b9e1bcf`; see `docs/phase-4-pr.md` |
 | 5 — trustworthy benchmarks | complete | local merge | `b9e1bcf` | 125 tests, synthetic/real integrity smokes, schema/corpus regeneration, and Lightbulb conversion passed; merged as `8b9fc923`; see `docs/phase-5-pr.md` |
 | 6 — qualified engines | complete | local merge | `8b9fc923` | 138 tests, common conformance, fixed-corpus qualification, optional-native isolation, and Lightbulb engine smoke passed; merged as `f02c265`; see `docs/phase-6-pr.md` |
-| 7 — routing and research | in progress | — | `f02c265` | deterministic routing baselines, trace-derived examples, and immutable experiment ledger started |
-| 8 — release v0.2 | planned | — | — | — |
+| 7 — routing and research | complete | local merge | `f02c265` | 148 tests, trace-derived fixed calibration, guarded negative model admission, and immutable experiment smoke passed; merged as `743f2ca`; see `docs/phase-7-pr.md` |
+| 8 — release v0.2 | in progress | — | `743f2ca` | CLI/schema/API audit, cross-platform packaging, policy, threat model, and clean-install validation started |
 
 A phase is `complete` only after its PR is merged and all acceptance criteria have evidence. Opening a PR does not make a phase complete.
 

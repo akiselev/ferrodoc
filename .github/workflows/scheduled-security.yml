@@ -1,0 +1,47 @@
+name: scheduled-security
+
+on:
+  schedule:
+    - cron: "23 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  advisory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+
+  fuzz:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [protocol_frame, manifest_ir, pdf_boundary, render_ir]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-fuzz --locked
+      - run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=60
+
+  sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - run: RUSTFLAGS="-Zsanitizer=address" cargo test -p ferrodoc-protocol --target x86_64-unknown-linux-gnu
+
+  model-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/model-manifest-check.sh

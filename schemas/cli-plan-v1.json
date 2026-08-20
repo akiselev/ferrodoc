@@ -1,0 +1,1386 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PlanOutput",
+  "description": "JSON contract emitted by `ferrodoc plan`.",
+  "type": "object",
+  "required": [
+    "input_digest",
+    "inventory",
+    "page_count",
+    "resource_plans",
+    "stages"
+  ],
+  "properties": {
+    "input_digest": {
+      "description": "Input digest.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        }
+      ]
+    },
+    "inventory": {
+      "$ref": "#/definitions/HardwareInventory"
+    },
+    "page_count": {
+      "description": "Page count.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "resource_plans": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PlanningReport"
+      }
+    },
+    "stages": {
+      "description": "Ordered decisions.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PlannedStage"
+      }
+    }
+  },
+  "definitions": {
+    "BackendId": {
+      "type": "string"
+    },
+    "CandidateDecision": {
+      "description": "Result for one enumerated candidate.",
+      "type": "object",
+      "required": [
+        "accepted",
+        "input",
+        "reasons"
+      ],
+      "properties": {
+        "accepted": {
+          "description": "True only when every hard constraint passed.",
+          "type": "boolean"
+        },
+        "input": {
+          "description": "Original candidate.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/CandidateInput"
+            }
+          ]
+        },
+        "reasons": {
+          "description": "Deterministically ordered reasons.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PlannerReason"
+          }
+        }
+      }
+    },
+    "CandidateInput": {
+      "description": "Descriptor, estimate, and model state considered as one candidate.",
+      "type": "object",
+      "required": [
+        "candidate",
+        "descriptor",
+        "model"
+      ],
+      "properties": {
+        "candidate": {
+          "description": "Concrete backend/device placement and estimate.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EngineCandidate"
+            }
+          ]
+        },
+        "descriptor": {
+          "description": "Engine-level capabilities and policy facts.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EngineDescriptor"
+            }
+          ]
+        },
+        "model": {
+          "description": "Model availability for this placement.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ModelAvailability"
+            }
+          ]
+        }
+      }
+    },
+    "Capability": {
+      "description": "A capability an engine can provide.",
+      "oneOf": [
+        {
+          "description": "Open and inspect a document container.",
+          "type": "string",
+          "enum": [
+            "document.open"
+          ]
+        },
+        {
+          "description": "Render a document page.",
+          "type": "string",
+          "enum": [
+            "page.render"
+          ]
+        },
+        {
+          "description": "Extract native text.",
+          "type": "string",
+          "enum": [
+            "text.extract"
+          ]
+        },
+        {
+          "description": "Detect layout regions.",
+          "type": "string",
+          "enum": [
+            "layout.detect"
+          ]
+        },
+        {
+          "description": "Determine reading order.",
+          "type": "string",
+          "enum": [
+            "reading-order.detect"
+          ]
+        },
+        {
+          "description": "OCR a complete page.",
+          "type": "string",
+          "enum": [
+            "ocr.page"
+          ]
+        },
+        {
+          "description": "OCR one region.",
+          "type": "string",
+          "enum": [
+            "ocr.region"
+          ]
+        },
+        {
+          "description": "Recognize a table.",
+          "type": "string",
+          "enum": [
+            "table.recognize"
+          ]
+        },
+        {
+          "description": "Recognize a formula.",
+          "type": "string",
+          "enum": [
+            "formula.recognize"
+          ]
+        },
+        {
+          "description": "Score evidence quality.",
+          "type": "string",
+          "enum": [
+            "quality.score"
+          ]
+        }
+      ]
+    },
+    "DeviceId": {
+      "type": "string"
+    },
+    "DeviceInventory": {
+      "description": "Runtime-independent facts about one physical device.",
+      "type": "object",
+      "required": [
+        "id",
+        "memory_available",
+        "memory_total"
+      ],
+      "properties": {
+        "id": {
+          "description": "Physical device identity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/DeviceId"
+            }
+          ]
+        },
+        "memory_available": {
+          "description": "Currently available device memory.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "memory_total": {
+          "description": "Total device memory.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "metadata": {
+          "description": "Deterministically ordered provider metadata.",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "DeviceKind": {
+      "description": "A physical device family, separate from inference backend and placement policy.",
+      "oneOf": [
+        {
+          "description": "Host CPU.",
+          "type": "string",
+          "enum": [
+            "cpu"
+          ]
+        },
+        {
+          "description": "NVIDIA CUDA device.",
+          "type": "string",
+          "enum": [
+            "cuda"
+          ]
+        },
+        {
+          "description": "Vulkan compute device.",
+          "type": "string",
+          "enum": [
+            "vulkan"
+          ]
+        },
+        {
+          "description": "Apple Metal device.",
+          "type": "string",
+          "enum": [
+            "metal"
+          ]
+        },
+        {
+          "description": "WebGPU-compatible device.",
+          "type": "string",
+          "enum": [
+            "wgpu"
+          ]
+        }
+      ]
+    },
+    "EngineCandidate": {
+      "description": "One compatible engine candidate and its conservative estimate.",
+      "type": "object",
+      "required": [
+        "backend",
+        "device",
+        "engine_id",
+        "resources"
+      ],
+      "properties": {
+        "backend": {
+          "description": "Selected backend.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BackendId"
+            }
+          ]
+        },
+        "device": {
+          "description": "Selected physical device.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/DeviceId"
+            }
+          ]
+        },
+        "engine_id": {
+          "description": "Engine identifier.",
+          "type": "string"
+        },
+        "resources": {
+          "description": "Resource and quality estimate.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ResourceEstimate"
+            }
+          ]
+        }
+      }
+    },
+    "EngineCompatibility": {
+      "description": "Engine compatibility for one backend across physical device families.",
+      "type": "object",
+      "required": [
+        "backend",
+        "devices"
+      ],
+      "properties": {
+        "backend": {
+          "description": "Inference or implementation backend.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BackendId"
+            }
+          ]
+        },
+        "devices": {
+          "description": "Compatible physical device families.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeviceKind"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "EngineDescriptor": {
+      "description": "Discoverable semantic descriptor for an engine implementation.",
+      "type": "object",
+      "required": [
+        "capabilities",
+        "compatibility",
+        "deterministic",
+        "id",
+        "max_concurrency",
+        "network_use",
+        "version"
+      ],
+      "properties": {
+        "capabilities": {
+          "description": "Capabilities the engine can execute.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Capability"
+          },
+          "uniqueItems": true
+        },
+        "compatibility": {
+          "description": "Compatible backend and device axes.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EngineCompatibility"
+          }
+        },
+        "deterministic": {
+          "description": "Whether identical deterministic inputs are expected to yield identical responses.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Stable lowercase engine identifier.",
+          "type": "string"
+        },
+        "max_concurrency": {
+          "description": "Maximum safe concurrent requests for one instance.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "network_use": {
+          "description": "Declared network behavior.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/NetworkUse"
+            }
+          ]
+        },
+        "version": {
+          "description": "Engine semantic version.",
+          "type": "string"
+        }
+      }
+    },
+    "EstimateConfidence": {
+      "description": "Confidence class for an estimate.",
+      "oneOf": [
+        {
+          "description": "Directly measured for the same artifact and configuration.",
+          "type": "string",
+          "enum": [
+            "measured"
+          ]
+        },
+        {
+          "description": "Derived from a calibrated model or close observation.",
+          "type": "string",
+          "enum": [
+            "calibrated"
+          ]
+        },
+        {
+          "description": "Conservative static upper bound supplied by an engine.",
+          "type": "string",
+          "enum": [
+            "conservative"
+          ]
+        },
+        {
+          "description": "Weak heuristic unsuitable for strict admission by default.",
+          "type": "string",
+          "enum": [
+            "heuristic"
+          ]
+        }
+      ]
+    },
+    "EstimateSource": {
+      "description": "Provenance for a group of resource estimates.",
+      "type": "object",
+      "required": [
+        "confidence",
+        "method"
+      ],
+      "properties": {
+        "confidence": {
+          "description": "Confidence class.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EstimateConfidence"
+            }
+          ]
+        },
+        "method": {
+          "description": "Stable method identifier or short description.",
+          "type": "string"
+        }
+      }
+    },
+    "Estimate_for_EstimateSource": {
+      "description": "A value that is either known or explicitly unknown.",
+      "oneOf": [
+        {
+          "description": "A measured or estimated value is available.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "known"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/EstimateSource"
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Estimate_for_Probability": {
+      "description": "A value that is either known or explicitly unknown.",
+      "oneOf": [
+        {
+          "description": "A measured or estimated value is available.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "known"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/Probability"
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Estimate_for_uint32": {
+      "description": "A value that is either known or explicitly unknown.",
+      "oneOf": [
+        {
+          "description": "A measured or estimated value is available.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "known"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Estimate_for_uint64": {
+      "description": "A value that is either known or explicitly unknown.",
+      "oneOf": [
+        {
+          "description": "A measured or estimated value is available.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "known"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ExecutionMode": {
+      "description": "Engine transport selected for a stage.",
+      "oneOf": [
+        {
+          "description": "Direct in-process trait call.",
+          "type": "string",
+          "enum": [
+            "embedded"
+          ]
+        },
+        {
+          "description": "Framed isolated child process.",
+          "type": "string",
+          "enum": [
+            "process"
+          ]
+        }
+      ]
+    },
+    "HardwareInventory": {
+      "description": "Hardware inventory supplied by the runtime to candidate estimation.",
+      "type": "object",
+      "required": [
+        "logical_cpus",
+        "ram_available",
+        "ram_total"
+      ],
+      "properties": {
+        "cpu_source": {
+          "description": "Provenance for the CPU topology values.",
+          "default": {
+            "status": "unknown"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_EstimateSource"
+            }
+          ]
+        },
+        "devices": {
+          "description": "Physical compute devices.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeviceInventory"
+          }
+        },
+        "logical_cpus": {
+          "description": "Logical CPU count when known.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint32"
+            }
+          ]
+        },
+        "physical_cpus": {
+          "description": "Physical CPU core count when the operating system exposes it.",
+          "default": {
+            "status": "unknown"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint32"
+            }
+          ]
+        },
+        "ram_available": {
+          "description": "Currently available host RAM.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "ram_source": {
+          "description": "Provenance for the host RAM values.",
+          "default": {
+            "status": "unknown"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_EstimateSource"
+            }
+          ]
+        },
+        "ram_total": {
+          "description": "Total host RAM.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        }
+      }
+    },
+    "ModelAvailability": {
+      "description": "Model readiness attached to one engine candidate.",
+      "oneOf": [
+        {
+          "description": "Candidate does not require a model.",
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "not_required"
+              ]
+            }
+          }
+        },
+        {
+          "description": "The exact immutable model is installed.",
+          "type": "object",
+          "required": [
+            "digest",
+            "id",
+            "status"
+          ],
+          "properties": {
+            "digest": {
+              "description": "Digest participating in cache identity.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Sha256Digest"
+                }
+              ]
+            },
+            "id": {
+              "description": "Installed model ID.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/ModelId"
+                }
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          }
+        },
+        {
+          "description": "A required model is absent.",
+          "type": "object",
+          "required": [
+            "id",
+            "status"
+          ],
+          "properties": {
+            "id": {
+              "description": "Missing model ID.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/ModelId"
+                }
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "missing"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ModelId": {
+      "type": "string"
+    },
+    "NetworkUse": {
+      "description": "Whether an engine can disclose document data over a network.",
+      "oneOf": [
+        {
+          "description": "Engine never performs network I/O.",
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        },
+        {
+          "description": "Network use is optional and policy-controlled.",
+          "type": "string",
+          "enum": [
+            "optional"
+          ]
+        },
+        {
+          "description": "Engine cannot execute without network access.",
+          "type": "string",
+          "enum": [
+            "required"
+          ]
+        }
+      ]
+    },
+    "PlacementPolicy": {
+      "description": "Planner placement intent, distinct from backend compatibility and devices.",
+      "oneOf": [
+        {
+          "description": "Let the planner select a compatible placement.",
+          "type": "object",
+          "required": [
+            "policy"
+          ],
+          "properties": {
+            "policy": {
+              "type": "string",
+              "enum": [
+                "auto"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Restrict execution to CPU.",
+          "type": "object",
+          "required": [
+            "policy"
+          ],
+          "properties": {
+            "policy": {
+              "type": "string",
+              "enum": [
+                "cpu-only"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Require one physical device.",
+          "type": "object",
+          "required": [
+            "device",
+            "policy"
+          ],
+          "properties": {
+            "device": {
+              "$ref": "#/definitions/DeviceId"
+            },
+            "policy": {
+              "type": "string",
+              "enum": [
+                "require"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Prefer one device but permit another compatible placement.",
+          "type": "object",
+          "required": [
+            "device",
+            "policy"
+          ],
+          "properties": {
+            "device": {
+              "$ref": "#/definitions/DeviceId"
+            },
+            "policy": {
+              "type": "string",
+              "enum": [
+                "prefer"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "PlanDecision": {
+      "description": "Whether one plan stage will execute.",
+      "oneOf": [
+        {
+          "description": "Stage is selected.",
+          "type": "string",
+          "enum": [
+            "selected"
+          ]
+        },
+        {
+          "description": "Stage is rejected by policy.",
+          "type": "string",
+          "enum": [
+            "rejected"
+          ]
+        },
+        {
+          "description": "Stage is required but its dependency is unavailable.",
+          "type": "string",
+          "enum": [
+            "unavailable"
+          ]
+        }
+      ]
+    },
+    "PlannedStage": {
+      "description": "One input-specific stage decision.",
+      "type": "object",
+      "required": [
+        "decision",
+        "explanation",
+        "stage"
+      ],
+      "properties": {
+        "decision": {
+          "description": "Selection result.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PlanDecision"
+            }
+          ]
+        },
+        "execution": {
+          "description": "Selected engine transport, absent for non-engine stages.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ExecutionMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "explanation": {
+          "description": "Deterministic explanation.",
+          "type": "string"
+        },
+        "page_index": {
+          "description": "Page index, absent for document-wide work.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "stage": {
+          "description": "Stable stage name.",
+          "type": "string"
+        }
+      }
+    },
+    "PlannerPolicy": {
+      "description": "Planner hard constraints and soft profile.",
+      "type": "object",
+      "required": [
+        "allow_unknown_hard_estimates",
+        "capability",
+        "offline",
+        "placement",
+        "private",
+        "profile"
+      ],
+      "properties": {
+        "allow_unknown_hard_estimates": {
+          "description": "Explicit opt-in allowing unknown values to pass hard numeric limits.",
+          "type": "boolean"
+        },
+        "allowed_engines": {
+          "description": "Empty means every discovered engine is allowed.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "capability": {
+          "description": "Required semantic capability.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Capability"
+            }
+          ]
+        },
+        "deadline": {
+          "description": "Maximum estimated stage duration.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "max_ram": {
+          "description": "Maximum peak host RAM.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "max_remote_cost": {
+          "description": "Maximum remote monetary cost.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "max_vram": {
+          "description": "Maximum peak device memory.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "offline": {
+          "description": "Require a provably network-free candidate.",
+          "type": "boolean"
+        },
+        "placement": {
+          "description": "Device placement constraint.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PlacementPolicy"
+            }
+          ]
+        },
+        "private": {
+          "description": "Require a candidate that cannot disclose document content.",
+          "type": "boolean"
+        },
+        "profile": {
+          "description": "Soft objective bundle, with documented hard restrictions for some profiles.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Profile"
+            }
+          ]
+        }
+      }
+    },
+    "PlannerReason": {
+      "description": "Machine-readable code plus a stable human explanation.",
+      "type": "object",
+      "required": [
+        "code",
+        "explanation"
+      ],
+      "properties": {
+        "code": {
+          "description": "Stable code suitable for automation.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ReasonCode"
+            }
+          ]
+        },
+        "explanation": {
+          "description": "Human-readable explanation with relevant values.",
+          "type": "string"
+        }
+      }
+    },
+    "PlanningReport": {
+      "description": "Complete candidate audit and selected Pareto preference, if any.",
+      "type": "object",
+      "required": [
+        "decisions",
+        "policy"
+      ],
+      "properties": {
+        "decisions": {
+          "description": "Candidate decisions in stable input-independent order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CandidateDecision"
+          }
+        },
+        "policy": {
+          "description": "Policy applied to every candidate.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PlannerPolicy"
+            }
+          ]
+        },
+        "selected": {
+          "description": "Selected accepted candidate; absent when every candidate was rejected.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/EngineCandidate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Probability": {
+      "description": "A finite probability in the inclusive range zero through one.",
+      "type": "number",
+      "format": "double"
+    },
+    "Profile": {
+      "description": "A built-in planning profile name.",
+      "oneOf": [
+        {
+          "description": "Prefer minimum latency.",
+          "type": "string",
+          "enum": [
+            "fast"
+          ]
+        },
+        {
+          "description": "Balance quality and resource use.",
+          "type": "string",
+          "enum": [
+            "balanced"
+          ]
+        },
+        {
+          "description": "Prefer quality.",
+          "type": "string",
+          "enum": [
+            "accurate"
+          ]
+        },
+        {
+          "description": "Restrict work to CPU devices.",
+          "type": "string",
+          "enum": [
+            "cpu"
+          ]
+        },
+        {
+          "description": "Enforce a small explicit VRAM budget.",
+          "type": "string",
+          "enum": [
+            "low-vram"
+          ]
+        },
+        {
+          "description": "Reject network-dependent candidates.",
+          "type": "string",
+          "enum": [
+            "offline"
+          ]
+        },
+        {
+          "description": "Reject candidates that disclose document content.",
+          "type": "string",
+          "enum": [
+            "private"
+          ]
+        },
+        {
+          "description": "Prefer minimum monetary cost.",
+          "type": "string",
+          "enum": [
+            "cheap"
+          ]
+        }
+      ]
+    },
+    "ReasonCode": {
+      "description": "Stable planner reason code.",
+      "oneOf": [
+        {
+          "description": "Candidate passed all hard constraints.",
+          "type": "string",
+          "enum": [
+            "accepted"
+          ]
+        },
+        {
+          "description": "Engine does not provide the required semantic capability.",
+          "type": "string",
+          "enum": [
+            "capability_unsupported"
+          ]
+        },
+        {
+          "description": "Candidate identity does not match its descriptor.",
+          "type": "string",
+          "enum": [
+            "descriptor_mismatch"
+          ]
+        },
+        {
+          "description": "Backend/device pair is not declared compatible.",
+          "type": "string",
+          "enum": [
+            "device_incompatible"
+          ]
+        },
+        {
+          "description": "Placement policy excludes the device.",
+          "type": "string",
+          "enum": [
+            "placement_rejected"
+          ]
+        },
+        {
+          "description": "Candidate is not in the explicit allow-list.",
+          "type": "string",
+          "enum": [
+            "engine_not_allowed"
+          ]
+        },
+        {
+          "description": "Required model is absent.",
+          "type": "string",
+          "enum": [
+            "model_unavailable"
+          ]
+        },
+        {
+          "description": "Offline policy cannot prove network-free execution.",
+          "type": "string",
+          "enum": [
+            "offline_violation"
+          ]
+        },
+        {
+          "description": "Private policy cannot prove content remains local.",
+          "type": "string",
+          "enum": [
+            "privacy_violation"
+          ]
+        },
+        {
+          "description": "A hard RAM estimate is unknown.",
+          "type": "string",
+          "enum": [
+            "ram_unknown"
+          ]
+        },
+        {
+          "description": "Peak RAM exceeds the applicable hard bound.",
+          "type": "string",
+          "enum": [
+            "ram_budget_exceeded"
+          ]
+        },
+        {
+          "description": "A hard VRAM estimate is unknown.",
+          "type": "string",
+          "enum": [
+            "vram_unknown"
+          ]
+        },
+        {
+          "description": "Peak VRAM exceeds the applicable hard bound.",
+          "type": "string",
+          "enum": [
+            "vram_budget_exceeded"
+          ]
+        },
+        {
+          "description": "A hard remote-cost estimate is unknown.",
+          "type": "string",
+          "enum": [
+            "cost_unknown"
+          ]
+        },
+        {
+          "description": "Remote cost exceeds the hard bound.",
+          "type": "string",
+          "enum": [
+            "cost_budget_exceeded"
+          ]
+        },
+        {
+          "description": "A hard latency estimate is unknown.",
+          "type": "string",
+          "enum": [
+            "latency_unknown"
+          ]
+        },
+        {
+          "description": "Estimated latency exceeds the deadline.",
+          "type": "string",
+          "enum": [
+            "deadline_exceeded"
+          ]
+        }
+      ]
+    },
+    "ResourceEstimate": {
+      "description": "Resource estimates for one engine candidate.",
+      "type": "object",
+      "required": [
+        "latency",
+        "peak_ram",
+        "peak_vram",
+        "quality",
+        "remote_cost",
+        "source",
+        "warm_ram",
+        "warm_vram"
+      ],
+      "properties": {
+        "latency": {
+          "description": "Expected execution duration.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "peak_ram": {
+          "description": "Maximum host RAM expected while executing.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "peak_vram": {
+          "description": "Maximum device VRAM expected while executing.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "quality": {
+          "description": "Expected output quality when calibrated.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_Probability"
+            }
+          ]
+        },
+        "remote_cost": {
+          "description": "Expected remote monetary cost.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "source": {
+          "description": "Source and confidence for these values.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_EstimateSource"
+            }
+          ]
+        },
+        "warm_ram": {
+          "description": "Host RAM retained while the engine remains warm.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "warm_vram": {
+          "description": "Device VRAM retained while the engine remains warm.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    }
+  }
+}

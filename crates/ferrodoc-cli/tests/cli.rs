@@ -199,6 +199,7 @@ fn malformed_and_missing_inputs_have_structured_errors() {
         .unwrap();
     assert_eq!(malformed.status.code(), Some(2));
     let error: serde_json::Value = serde_json::from_slice(&malformed.stderr).unwrap();
+    assert_eq!(error["schema_version"], "ferrodoc-cli-error/1");
     assert_eq!(error["error"]["category"], "malformed_pdf");
 
     let missing = run(&["inspect", "/definitely/missing/ferrodoc.pdf"]);
@@ -223,6 +224,22 @@ fn malformed_and_missing_inputs_have_structured_errors() {
     assert_eq!(unsupported.status.code(), Some(2));
     let error: serde_json::Value = serde_json::from_slice(&unsupported.stderr).unwrap();
     assert_eq!(error["error"]["category"], "unsupported_pdf");
+}
+
+#[test]
+fn oversized_pdf_is_rejected_before_reading_its_payload() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("oversized.pdf");
+    let file = fs::File::create(&path).unwrap();
+    file.set_len(256 * Bytes::MIB + 1).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+        .arg("inspect")
+        .arg(path)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["category"], "limit_exceeded");
 }
 
 #[test]

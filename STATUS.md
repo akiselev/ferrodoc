@@ -1,6 +1,6 @@
 # Status
 
-- Phases 0 through 6 are complete and merged locally; remote review and branch protection remain release operations.
-- Phase 6 delivered common conformance, the qualified pure-Rust engine set, optional direct Tesseract C-API and experimental no-shell command boundaries, feature isolation, and fixed-corpus evidence.
-- Phase 7 is in progress from `f02c265` on `phase-7/routing-and-research`.
-- Current work: deterministic routing baselines, leakage-resistant trace-derived examples, guarded learned selection, and an immutable resumable experiment ledger.
+- Phases 0 through 7 are complete and merged locally; remote review and branch protection remain release operations.
+- Phase 7 delivered deterministic baselines, digest-bound trace-derived examples, guarded negative learned-model admission, and an immutable resumable experiment ledger.
+- Phase 8 is in progress from `743f2ca` on `phase-8/release-v0.2`.
+- Current work: stable CLI/schema/API contracts, cross-platform and MSRV CI, dependency/license/source policy, threat modeling, packaging, clean installation, and release evidence.
