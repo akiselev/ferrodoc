@@ -15,6 +15,43 @@ pub enum Command {
     Hardware,
     Models(ModelsCommand),
     PluginsDoctor(PluginsDoctorArgs),
+    Router(RouterCommand),
+    Research(ResearchCommand),
+}
+
+#[derive(Debug)]
+pub enum RouterCommand {
+    Inspect {
+        root: PathBuf,
+        dataset: PathBuf,
+    },
+    Train {
+        root: PathBuf,
+        dataset: PathBuf,
+        model: PathBuf,
+    },
+    Evaluate {
+        root: PathBuf,
+        dataset: PathBuf,
+        model: PathBuf,
+    },
+    Compare {
+        root: PathBuf,
+        dataset: PathBuf,
+        model: PathBuf,
+    },
+}
+
+#[derive(Debug)]
+pub enum ResearchCommand {
+    Run {
+        root: PathBuf,
+        spec: PathBuf,
+        ledger: PathBuf,
+    },
+    Status {
+        ledger: PathBuf,
+    },
 }
 
 #[derive(Debug)]
@@ -87,6 +124,8 @@ fn parse_from(arguments: impl Iterator<Item = OsString>) -> Result<Command, Args
         "plugins" if values.get(1).and_then(|value| value.to_str()) == Some("doctor") => {
             parse_plugins_doctor(&values[2..]).map(Command::PluginsDoctor)
         }
+        "router" => parse_router(&values[1..]).map(Command::Router),
+        "research" => parse_research(&values[1..]).map(Command::Research),
         "inspect" => {
             if values.len() != 2 {
                 return Err(ArgsError("usage: ferrodoc inspect <input.pdf>".into()));
@@ -109,6 +148,50 @@ fn parse_from(arguments: impl Iterator<Item = OsString>) -> Result<Command, Args
             parse_pipeline(&values[1..], false).map(|(pipeline, _, _)| Command::Explain(pipeline))
         }
         _ => Err(ArgsError(usage().into())),
+    }
+}
+
+fn parse_router(values: &[OsString]) -> Result<RouterCommand, ArgsError> {
+    match values.first().and_then(|value| value.to_str()) {
+        Some("inspect") if values.len() == 3 => Ok(RouterCommand::Inspect {
+            root: PathBuf::from(&values[1]),
+            dataset: PathBuf::from(&values[2]),
+        }),
+        Some("train") if values.len() == 4 => Ok(RouterCommand::Train {
+            root: PathBuf::from(&values[1]),
+            dataset: PathBuf::from(&values[2]),
+            model: PathBuf::from(&values[3]),
+        }),
+        Some("evaluate") if values.len() == 4 => Ok(RouterCommand::Evaluate {
+            root: PathBuf::from(&values[1]),
+            dataset: PathBuf::from(&values[2]),
+            model: PathBuf::from(&values[3]),
+        }),
+        Some("compare") if values.len() == 4 => Ok(RouterCommand::Compare {
+            root: PathBuf::from(&values[1]),
+            dataset: PathBuf::from(&values[2]),
+            model: PathBuf::from(&values[3]),
+        }),
+        _ => Err(ArgsError(
+            "usage: ferrodoc router inspect <root> <dataset.json> | train|evaluate|compare <root> <dataset.json> <model.json>".into(),
+        )),
+    }
+}
+
+fn parse_research(values: &[OsString]) -> Result<ResearchCommand, ArgsError> {
+    match values.first().and_then(|value| value.to_str()) {
+        Some("run") if values.len() == 4 => Ok(ResearchCommand::Run {
+            root: PathBuf::from(&values[1]),
+            spec: PathBuf::from(&values[2]),
+            ledger: PathBuf::from(&values[3]),
+        }),
+        Some("status") if values.len() == 2 => Ok(ResearchCommand::Status {
+            ledger: PathBuf::from(&values[1]),
+        }),
+        _ => Err(ArgsError(
+            "usage: ferrodoc research run <root> <spec.json> <ledger.json> | status <ledger.json>"
+                .into(),
+        )),
     }
 }
 
@@ -333,7 +416,7 @@ fn parse_u64(value: String, option: &str) -> Result<u64, ArgsError> {
 }
 
 fn usage() -> &'static str {
-    "usage: ferrodoc --version | status | hardware | models <list|verify|pull|gc> | plugins doctor | inspect <input.pdf> | plan <input.pdf> [options] | explain <input.pdf> [options] | convert <input.pdf> [-o output] [--format markdown|html|json] [options]"
+    "usage: ferrodoc --version | status | hardware | models <list|verify|pull|gc> | plugins doctor | router <inspect|train|evaluate|compare> ... | research <run|status> ... | inspect <input.pdf> | plan <input.pdf> [options] | explain <input.pdf> [options] | convert <input.pdf> [-o output] [--format markdown|html|json] [options]"
 }
 
 #[cfg(test)]

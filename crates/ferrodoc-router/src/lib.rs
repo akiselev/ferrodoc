@@ -386,6 +386,7 @@ pub struct RouterModel {
     pub ocr_engine: String,
     pub confidence: f64,
     pub minimum_confidence: f64,
+    pub objective: TrainingObjective,
     pub qualification: Qualification,
     pub training: RouterEvaluation,
     pub held_out: RouterEvaluation,
@@ -509,10 +510,74 @@ pub fn train_and_evaluate(
         ocr_engine,
         confidence,
         minimum_confidence: objective.minimum_confidence,
+        objective,
         qualification,
         training: training_evaluation,
         held_out: held_out_evaluation,
         baselines,
+    })
+}
+
+/// Re-evaluates a model on its sealed held-out partition and checks dataset identity.
+pub fn evaluate_model(
+    dataset: &RoutingDataset,
+    model: &RouterModel,
+) -> Result<RouterEvaluation, RouterError> {
+    dataset.validate()?;
+    if model.model_version != MODEL_VERSION
+        || model.feature_schema_version != FEATURE_SCHEMA_VERSION
+        || model.dataset_digest != Sha256Digest::of_bytes(&serde_json::to_vec(dataset)?)
+    {
+        return Err(RouterError::Integrity(
+            "model and routing dataset identities differ".into(),
+        ));
+    }
+    let held_out: Vec<_> = dataset
+        .records
+        .iter()
+        .filter(|record| record.partition == Partition::HeldOut)
+        .collect();
+    if held_out.is_empty() {
+        return Err(RouterError::Integrity("held-out partition is empty".into()));
+    }
+    Ok(evaluate_records(
+        &held_out,
+        Partition::HeldOut,
+        &model.objective,
+        |features| stump_route(features, model.threshold, model.native_if_at_least),
+        &model.native_engine,
+        &model.ocr_engine,
+    ))
+}
+
+/// Same-case comparison between the learned candidate and deterministic baselines.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PlanComparison {
+    pub model_qualification: Qualification,
+    pub learned: RouterEvaluation,
+    pub baselines: Vec<(BaselinePolicy, RouterEvaluation)>,
+    pub identical_case_sets: bool,
+}
+
+pub fn compare_plans(
+    dataset: &RoutingDataset,
+    model: &RouterModel,
+) -> Result<PlanComparison, RouterError> {
+    let learned = evaluate_model(dataset, model)?;
+    let identical_case_sets = model
+        .baselines
+        .iter()
+        .all(|(_, baseline)| baseline.case_ids == learned.case_ids);
+    if !identical_case_sets {
+        return Err(RouterError::Integrity(
+            "learned and baseline evaluations use different held-out cases".into(),
+        ));
+    }
+    Ok(PlanComparison {
+        model_qualification: model.qualification.clone(),
+        learned,
+        baselines: model.baselines.clone(),
+        identical_case_sets,
     })
 }
 
@@ -708,6 +773,7 @@ mod tests {
             ocr_engine: "ocr".into(),
             confidence: 1.0,
             minimum_confidence: 0.6,
+            objective: TrainingObjective::default(),
             qualification: Qualification::Qualified,
             training: evaluation(),
             held_out: evaluation(),

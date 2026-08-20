@@ -408,6 +408,8 @@ dependencies = [
  "ferrodoc-layout-rulebased",
  "ferrodoc-pdf",
  "ferrodoc-render",
+ "ferrodoc-research",
+ "ferrodoc-router",
  "ferrodoc-runtime",
  "serde",
  "serde_json",

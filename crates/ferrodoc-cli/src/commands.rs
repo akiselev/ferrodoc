@@ -10,6 +10,8 @@ use ferrodoc_engine_tesseract::TesseractEngine;
 use ferrodoc_layout_rulebased::RuleBasedLayoutEngine;
 use ferrodoc_pdf::{PdfDocument, PdfLimits};
 use ferrodoc_render::render;
+use ferrodoc_research::ExperimentLedger;
+use ferrodoc_router::{RouterModel, RoutingDataset, TrainingObjective};
 use ferrodoc_runtime::{
     ConversionOptions, Converter, PluginCommand, ProcessConfig, ProcessEngine,
     doctor::{DoctorReport, InferenceProbe},
@@ -19,7 +21,10 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::{
-    args::{Command, ConvertArgs, ModelsCommand, PipelineArgs, PluginsDoctorArgs},
+    args::{
+        Command, ConvertArgs, ModelsCommand, PipelineArgs, PluginsDoctorArgs, ResearchCommand,
+        RouterCommand,
+    },
     configuration::{Configuration, ConfigurationError},
     output::{self, OutputError},
 };
@@ -47,6 +52,10 @@ pub enum CommandError {
     ModelStore(#[from] ModelStoreError),
     #[error(transparent)]
     Engine(#[from] EngineError),
+    #[error(transparent)]
+    Router(#[from] ferrodoc_router::RouterError),
+    #[error(transparent)]
+    Research(#[from] ferrodoc_research::ResearchError),
 }
 
 impl CommandError {
@@ -70,6 +79,8 @@ impl CommandError {
             Self::Serialize(_) => "serialization",
             Self::ModelStore(_) => "model_store",
             Self::Engine(_) => "engine",
+            Self::Router(_) => "router",
+            Self::Research(_) => "research",
         }
     }
 }
@@ -81,6 +92,8 @@ pub fn run(command: Command) -> Result<(), CommandError> {
         Command::Hardware => print_json(&ferrodoc_runtime::hardware::inventory())?,
         Command::Models(command) => run_models(command)?,
         Command::PluginsDoctor(arguments) => plugins_doctor(arguments)?,
+        Command::Router(command) => run_router(command)?,
+        Command::Research(command) => run_research(command)?,
         Command::Inspect { input } => {
             let bytes = read(&input)?;
             let pdf = PdfDocument::from_bytes(bytes, PdfLimits::default())?;
@@ -163,6 +176,72 @@ pub fn run(command: Command) -> Result<(), CommandError> {
             })?;
         }
         Command::Convert(arguments) => convert(arguments)?,
+    }
+    Ok(())
+}
+
+fn run_router(command: RouterCommand) -> Result<(), CommandError> {
+    let (root, dataset_path) = match &command {
+        RouterCommand::Inspect { root, dataset }
+        | RouterCommand::Train { root, dataset, .. }
+        | RouterCommand::Evaluate { root, dataset, .. }
+        | RouterCommand::Compare { root, dataset, .. } => (root, dataset),
+    };
+    let dataset: RoutingDataset = serde_json::from_slice(&read(dataset_path)?)?;
+    dataset.verify_sources(root)?;
+    match command {
+        RouterCommand::Inspect { .. } => {
+            #[derive(Serialize)]
+            struct Summary<'a> {
+                dataset_version: &'a str,
+                feature_schema_version: &'a str,
+                corpus_digest: Sha256Digest,
+                records: usize,
+                partitions: BTreeMap<String, usize>,
+                source_verification: &'static str,
+            }
+            let mut partitions = BTreeMap::new();
+            for record in &dataset.records {
+                *partitions
+                    .entry(format!("{:?}", record.partition).to_lowercase())
+                    .or_insert(0) += 1;
+            }
+            print_json(&Summary {
+                dataset_version: &dataset.dataset_version,
+                feature_schema_version: &dataset.feature_schema_version,
+                corpus_digest: dataset.corpus_digest,
+                records: dataset.records.len(),
+                partitions,
+                source_verification: "passed",
+            })?;
+        }
+        RouterCommand::Train { model, .. } => {
+            let trained =
+                ferrodoc_router::train_and_evaluate(&dataset, TrainingObjective::default())?;
+            write_json_file(&model, &trained)?;
+            print_json(&trained)?;
+        }
+        RouterCommand::Evaluate { model, .. } => {
+            let model: RouterModel = serde_json::from_slice(&read(&model)?)?;
+            print_json(&ferrodoc_router::evaluate_model(&dataset, &model)?)?;
+        }
+        RouterCommand::Compare { model, .. } => {
+            let model: RouterModel = serde_json::from_slice(&read(&model)?)?;
+            print_json(&ferrodoc_router::compare_plans(&dataset, &model)?)?;
+        }
+    }
+    Ok(())
+}
+
+fn run_research(command: ResearchCommand) -> Result<(), CommandError> {
+    match command {
+        ResearchCommand::Run { root, spec, ledger } => {
+            print_json(&ferrodoc_research::run(&root, &spec, &ledger)?)?;
+        }
+        ResearchCommand::Status { ledger } => {
+            let ledger: ExperimentLedger = serde_json::from_slice(&read(&ledger)?)?;
+            print_json(&ledger)?;
+        }
     }
     Ok(())
 }
@@ -347,5 +426,12 @@ fn print_json(value: &impl Serialize) -> Result<(), CommandError> {
     let mut bytes = serde_json::to_vec_pretty(value)?;
     bytes.push(b'\n');
     output::write(&bytes, None)?;
+    Ok(())
+}
+
+fn write_json_file(path: &Path, value: &impl Serialize) -> Result<(), CommandError> {
+    let mut bytes = serde_json::to_vec_pretty(value)?;
+    bytes.push(b'\n');
+    output::write(&bytes, Some(path))?;
     Ok(())
 }
