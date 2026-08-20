@@ -25,6 +25,8 @@ The checked-in image-only fixture recovered exactly `SCANNED FERRODOC PAGE` and 
 
 The first page of image-only OSTI 7094593 did not finish OCR within a three-minute debug-build probe and was terminated. This is retained as performance evidence, not represented as a passing real-corpus OCR result; measurement and optimization belong in Phases 4 and 5.
 
+The first end-to-end OSTI 4130843 conversion exposed floating-point accumulation in layout bands: the last region could extend fractionally beyond a non-divisible page height. The implementation now derives the last band from the exact remaining height, has a regression test, and successfully converts all four pages (5,028 bytes before paragraph-line joining and 4,780 bytes after it).
+
 Model digests used for development and optional CI:
 
 - detection: `f15cfb56bd02c4bf478a20343986504a1f01e1665c2b3a0ad66340f054b1b5ca`;

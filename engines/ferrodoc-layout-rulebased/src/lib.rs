@@ -127,19 +127,26 @@ impl Engine for RuleBasedLayoutEngine {
             .map_err(|error| internal(error.to_string()))?;
         let layer_id = LayerId::derive(&[provenance_digest.as_bytes()]);
         let blocks = text_blocks(text);
-        let band_height = height / blocks.len().max(1) as f64;
+        let block_count = blocks.len();
+        let band_height = height / block_count.max(1) as f64;
         let evidence = blocks
             .into_iter()
             .enumerate()
             .map(|(index, block)| {
                 let kind = classify(&block);
+                let y = index as f64 * band_height;
+                let region_height = if index + 1 == block_count {
+                    height - y
+                } else {
+                    band_height
+                };
                 let geometry = PageRect {
                     page_index,
                     rect: Rect::new(
                         0.0,
-                        index as f64 * band_height,
+                        y,
                         width,
-                        band_height,
+                        region_height,
                         CoordinateSpace::Pdf,
                         Unit::Point,
                     )
@@ -197,24 +204,51 @@ fn positive_parameter(request: &EngineRequest, key: &str) -> Result<f64, EngineE
 }
 
 fn text_blocks(text: &str) -> Vec<String> {
-    text.lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(str::to_owned)
-        .collect()
+    let mut blocks = Vec::new();
+    let mut paragraph = String::new();
+    let flush = |paragraph: &mut String, blocks: &mut Vec<String>| {
+        if !paragraph.is_empty() {
+            blocks.push(std::mem::take(paragraph));
+        }
+    };
+    for line in text.lines().map(str::trim) {
+        if line.is_empty() {
+            flush(&mut paragraph, &mut blocks);
+            continue;
+        }
+        if looks_like_heading(line) {
+            flush(&mut paragraph, &mut blocks);
+            blocks.push(line.to_owned());
+            continue;
+        }
+        if !paragraph.is_empty() && !paragraph.ends_with('-') {
+            paragraph.push(' ');
+        }
+        paragraph.push_str(line);
+        if line.ends_with(['.', '!', '?']) {
+            flush(&mut paragraph, &mut blocks);
+        }
+    }
+    flush(&mut paragraph, &mut blocks);
+    blocks
 }
 
 fn classify(text: &str) -> RegionKind {
-    let letters: Vec<_> = text
-        .chars()
-        .filter(|character| character.is_alphabetic())
-        .collect();
-    let uppercase = !letters.is_empty() && letters.iter().all(|character| character.is_uppercase());
-    if uppercase || (text.len() <= 80 && !text.ends_with(['.', '!', '?'])) {
+    if looks_like_heading(text) {
         RegionKind::Heading
     } else {
         RegionKind::Paragraph
     }
+}
+
+fn looks_like_heading(text: &str) -> bool {
+    let letters: Vec<_> = text
+        .chars()
+        .filter(|character| character.is_alphabetic())
+        .collect();
+    !letters.is_empty()
+        && text.len() <= 160
+        && letters.iter().all(|character| character.is_uppercase())
 }
 
 fn invalid(message: impl Into<String>) -> EngineError {
@@ -275,5 +309,49 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first.evidence.len(), 2);
         assert_eq!(first.evidence[0].engine_metadata["region_kind"], "heading");
+    }
+
+    #[test]
+    fn final_fractional_band_does_not_cross_page_bounds() {
+        let bytes = b"one\ntwo\nthree\nfour\nfive\nsix\nseven".to_vec();
+        let request = EngineRequest {
+            request_id: RequestId::derive(&[b"fractional-layout-test"]),
+            capability: Capability::LayoutDetect,
+            input: ScopedBlob {
+                id: BlobId::new("text").unwrap(),
+                range: BlobRange::new(0, bytes.len() as u64).unwrap(),
+                media_type: MediaType::new("text/plain").unwrap(),
+                expected_digest: Some(Sha256Digest::of_bytes(&bytes)),
+            },
+            page_index: Some(0),
+            parameters: BTreeMap::from([
+                ("page_width".into(), serde_json::json!(558.0)),
+                ("page_height".into(), serde_json::json!(746.0)),
+            ]),
+            deterministic_seed: None,
+            deadline: None,
+        };
+        let context = ExecutionContext {
+            cancellation: CancellationToken::default(),
+            deadline: None,
+            blobs: &Resolver(bytes),
+            trace: &Trace,
+        };
+        let mut engine = RuleBasedLayoutEngine::new();
+        let response = engine.execute(request, &context).unwrap();
+        let last = response.evidence.last().unwrap().geometry.unwrap().rect;
+        assert_eq!(last.bottom(), 746.0);
+    }
+
+    #[test]
+    fn wrapped_lines_form_paragraphs_until_sentence_end() {
+        assert_eq!(
+            text_blocks("A wrapped line\ncontinues to its end.\nNEXT HEADING\nFinal text."),
+            [
+                "A wrapped line continues to its end.",
+                "NEXT HEADING",
+                "Final text."
+            ]
+        );
     }
 }
