@@ -463,4 +463,27 @@ mod tests {
         );
         assert!(MediaType::new("application/pdf; charset=utf-8").is_err());
     }
+
+    #[test]
+    fn profile_representations_are_identical() {
+        let schema = serde_json::to_string(&schemars::schema_for!(Profile)).unwrap();
+        for profile in [
+            Profile::Fast,
+            Profile::Balanced,
+            Profile::Accurate,
+            Profile::Cpu,
+            Profile::LowVram,
+            Profile::Offline,
+            Profile::Private,
+            Profile::Cheap,
+        ] {
+            let text = profile.to_string();
+            assert_eq!(text.parse::<Profile>().unwrap(), profile);
+            assert_eq!(
+                serde_json::to_string(&profile).unwrap(),
+                format!("\"{text}\"")
+            );
+            assert!(schema.contains(&format!("\"{text}\"")));
+        }
+    }
 }

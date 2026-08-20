@@ -4,7 +4,11 @@
 //! separate records. A selected view references evidence IDs and explains the
 //! reconciliation decision without deleting competing hypotheses.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    str::FromStr,
+};
 
 use ferrodoc_core::{
     ArtifactId, BlobId, CURRENT_SCHEMA_VERSION, DeterministicProvenance, DocumentId, EvidenceId,
@@ -121,6 +125,55 @@ pub enum RegionKind {
     Footnote,
     /// Handwriting.
     Handwriting,
+}
+
+impl fmt::Display for RegionKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Unknown => "unknown",
+            Self::Paragraph => "paragraph",
+            Self::Heading => "heading",
+            Self::List => "list",
+            Self::ListItem => "list_item",
+            Self::Table => "table",
+            Self::TableCell => "table_cell",
+            Self::Formula => "formula",
+            Self::Figure => "figure",
+            Self::Caption => "caption",
+            Self::Code => "code",
+            Self::Header => "header",
+            Self::Footer => "footer",
+            Self::Footnote => "footnote",
+            Self::Handwriting => "handwriting",
+        })
+    }
+}
+
+impl FromStr for RegionKind {
+    type Err = IrError;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "unknown" => Ok(Self::Unknown),
+            "paragraph" => Ok(Self::Paragraph),
+            "heading" => Ok(Self::Heading),
+            "list" => Ok(Self::List),
+            "list_item" => Ok(Self::ListItem),
+            "table" => Ok(Self::Table),
+            "table_cell" => Ok(Self::TableCell),
+            "formula" => Ok(Self::Formula),
+            "figure" => Ok(Self::Figure),
+            "caption" => Ok(Self::Caption),
+            "code" => Ok(Self::Code),
+            "header" => Ok(Self::Header),
+            "footer" => Ok(Self::Footer),
+            "footnote" => Ok(Self::Footnote),
+            "handwriting" => Ok(Self::Handwriting),
+            _ => Err(IrError::Invalid(format!(
+                "unknown canonical region kind {input:?}"
+            ))),
+        }
+    }
 }
 
 /// A structured table cell.

@@ -349,6 +349,17 @@ mod tests {
         }
 
         #[test]
+        fn expansion_contains_original(
+            x in -1000.0f64..1000.0, y in -1000.0f64..1000.0,
+            width in 0.0f64..1000.0, height in 0.0f64..1000.0,
+            margin in 0.0f64..1000.0,
+        ) {
+            let rect = pixel_rect(x, y, width, height);
+            let expanded = rect.expanded(margin, None).unwrap().unwrap();
+            prop_assert!(expanded.contains(rect).unwrap());
+        }
+
+        #[test]
         fn iou_is_translation_invariant(
             ax in -100.0f64..100.0, ay in -100.0f64..100.0,
             aw in 0.1f64..100.0, ah in 0.1f64..100.0,

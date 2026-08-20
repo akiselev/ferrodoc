@@ -194,3 +194,30 @@ fn schema_snapshots_match_public_contracts() {
         expected_manifest
     );
 }
+
+#[test]
+fn region_kind_representations_are_identical() {
+    let schema = serde_json::to_string(&schemars::schema_for!(RegionKind)).unwrap();
+    for kind in [
+        RegionKind::Unknown,
+        RegionKind::Paragraph,
+        RegionKind::Heading,
+        RegionKind::List,
+        RegionKind::ListItem,
+        RegionKind::Table,
+        RegionKind::TableCell,
+        RegionKind::Formula,
+        RegionKind::Figure,
+        RegionKind::Caption,
+        RegionKind::Code,
+        RegionKind::Header,
+        RegionKind::Footer,
+        RegionKind::Footnote,
+        RegionKind::Handwriting,
+    ] {
+        let text = kind.to_string();
+        assert_eq!(text.parse::<RegionKind>().unwrap(), kind);
+        assert_eq!(serde_json::to_string(&kind).unwrap(), format!("\"{text}\""));
+        assert!(schema.contains(&format!("\"{text}\"")));
+    }
+}
