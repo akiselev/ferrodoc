@@ -7,7 +7,7 @@ use std::{error::Error, fs, path::Path};
 
 use ferrodoc_pdf::{PdfDocument, PdfLimits};
 use lopdf::{
-    Document, Object, Stream,
+    Document, EncryptionState, EncryptionVersion, Object, Permissions, Stream,
     content::{Content, Operation},
 };
 
@@ -38,6 +38,22 @@ fn main() -> Result<(), Box<dyn Error>> {
         None,
     )?;
     fs::write(fixture_dir.join("born-digital.pdf"), &born_digital)?;
+    let mut encrypted = Document::load_mem(&born_digital)?;
+    encrypted.trailer.set(
+        "ID",
+        vec![
+            Object::string_literal("ferrodoc-encrypted-fixture"),
+            Object::string_literal("ferrodoc-encrypted-fixture"),
+        ],
+    );
+    let encryption = EncryptionState::try_from(EncryptionVersion::V1 {
+        document: &encrypted,
+        owner_password: "fixture-owner",
+        user_password: "fixture-user",
+        permissions: Permissions::empty(),
+    })?;
+    encrypted.encrypt(&encryption)?;
+    encrypted.save(fixture_dir.join("encrypted.pdf"))?;
 
     let scan_source = native_pdf(
         &[

@@ -483,8 +483,10 @@ mod tests {
 
     #[test]
     fn rotated_crop_box_controls_geometry_and_raster_limits() {
-        let mut limits = PdfLimits::default();
-        limits.maximum_page_pixels = 10;
+        let limits = PdfLimits {
+            maximum_page_pixels: 10,
+            ..PdfLimits::default()
+        };
         let document = PdfDocument::from_bytes(
             include_bytes!("../../../fixtures/pdf/rotated-cropped.pdf").to_vec(),
             limits,
@@ -511,6 +513,17 @@ mod tests {
                 PdfLimits::default()
             ),
             Err(PdfError::Malformed(_))
+        ));
+    }
+
+    #[test]
+    fn checked_in_encrypted_fixture_is_categorized() {
+        assert!(matches!(
+            PdfDocument::from_bytes(
+                include_bytes!("../../../fixtures/pdf/encrypted.pdf").to_vec(),
+                PdfLimits::default()
+            ),
+            Err(PdfError::Encrypted)
         ));
     }
 }
