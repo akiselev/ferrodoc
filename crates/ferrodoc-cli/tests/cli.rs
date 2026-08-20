@@ -108,6 +108,15 @@ fn malformed_and_missing_inputs_have_structured_errors() {
     assert_eq!(encrypted.status.code(), Some(2));
     let error: serde_json::Value = serde_json::from_slice(&encrypted.stderr).unwrap();
     assert_eq!(error["error"]["category"], "encrypted_pdf");
+
+    let unsupported = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+        .arg("inspect")
+        .arg(fixture("unsupported-rotation.pdf"))
+        .output()
+        .unwrap();
+    assert_eq!(unsupported.status.code(), Some(2));
+    let error: serde_json::Value = serde_json::from_slice(&unsupported.stderr).unwrap();
+    assert_eq!(error["error"]["category"], "unsupported_pdf");
 }
 
 #[test]

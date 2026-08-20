@@ -526,4 +526,15 @@ mod tests {
             Err(PdfError::Encrypted)
         ));
     }
+
+    #[test]
+    fn unsupported_rotation_is_categorized() {
+        assert!(matches!(
+            PdfDocument::from_bytes(
+                include_bytes!("../../../fixtures/pdf/unsupported-rotation.pdf").to_vec(),
+                PdfLimits::default()
+            ),
+            Err(PdfError::Unsupported(_))
+        ));
+    }
 }

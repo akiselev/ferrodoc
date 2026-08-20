@@ -84,6 +84,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some([20, 30, 420, 630]),
     )?;
     fs::write(fixture_dir.join("rotated-cropped.pdf"), rotated)?;
+    let unsupported_rotation =
+        native_pdf(&[(18, 72, 500, "UNSUPPORTED ROTATION")], Some(45), None)?;
+    fs::write(
+        fixture_dir.join("unsupported-rotation.pdf"),
+        unsupported_rotation,
+    )?;
     fs::write(
         fixture_dir.join("malformed.pdf"),
         b"%PDF-1.7\nthis is deliberately truncated\n",
