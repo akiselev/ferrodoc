@@ -986,8 +986,8 @@ Every phase PR updates this table. Use only: `planned`, `in progress`, `blocked`
 
 | Phase | Status | PR | Baseline SHA | Completion evidence |
 |---|---|---|---|---|
-| Plan | in progress | this PR | `621c65ba54b22ca15478c55e2d203af8e7256a10` | `PLAN.md` reviewed and merged |
-| 0 — repository recovery | planned | — | — | — |
+| Plan | complete | #2 | `621c65ba54b22ca15478c55e2d203af8e7256a10` | merged as `1be7412e440fa1ab72c32d84150ffbe5048e5314` |
+| 0 — repository recovery | in progress | — | `1be7412e440fa1ab72c32d84150ffbe5048e5314` | recovery audit started; baseline workspace failure reproduced |
 | 1 — foundations and IR | planned | — | — | — |
 | 2 — minimal conversion | planned | — | — | — |
 | 3 — process protocol | planned | — | — | — |
