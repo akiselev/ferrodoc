@@ -22,6 +22,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod conformance;
+
 /// Engine compatibility for one backend across physical device families.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct EngineCompatibility {
