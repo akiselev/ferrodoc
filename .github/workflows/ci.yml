@@ -25,7 +25,11 @@ jobs:
       - run: cargo run --locked -p ferrodoc-ir --example export_snapshots
       - run: cargo run --locked -p ferrodoc-pdf --example generate_fixtures
       - run: cargo run --locked -p ferrodoc-protocol --example export_fixtures
+      - run: cargo run --locked -p ferrodoc-foundry --example export_foundry_schemas
+      - run: cargo run --locked -p ferrodoc-bench --example export_benchmark_schemas
+      - run: cargo run --locked -p ferrodoc-bench --example export_real_regression
       - run: ./scripts/smoke.sh
+      - run: ./scripts/benchmark-smoke.sh
       - run: git diff --exit-code
 
   process-protocol:
