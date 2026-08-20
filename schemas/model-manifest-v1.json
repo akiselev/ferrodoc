@@ -1,0 +1,175 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ModelManifest",
+  "description": "A versioned, content-addressed model manifest.",
+  "type": "object",
+  "required": [
+    "files",
+    "id",
+    "license",
+    "revision",
+    "schema_version"
+  ],
+  "properties": {
+    "acceptance": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/AcceptanceRequirement"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ModelFile"
+      }
+    },
+    "id": {
+      "$ref": "#/definitions/ModelId"
+    },
+    "license": {
+      "$ref": "#/definitions/LicenseMetadata"
+    },
+    "revision": {
+      "type": "string"
+    },
+    "schema_version": {
+      "$ref": "#/definitions/SchemaVersion"
+    }
+  },
+  "definitions": {
+    "AcceptanceRequirement": {
+      "description": "An explicit acceptance gate for model installation.",
+      "oneOf": [
+        {
+          "description": "The caller must affirm the stated license terms.",
+          "type": "object",
+          "required": [
+            "kind",
+            "prompt"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "license"
+              ]
+            },
+            "prompt": {
+              "description": "Stable acceptance prompt.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "The caller must affirm a use restriction supplied by the distributor.",
+          "type": "object",
+          "required": [
+            "kind",
+            "prompt"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "usage_terms"
+              ]
+            },
+            "prompt": {
+              "description": "Stable acceptance prompt.",
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "LicenseMetadata": {
+      "description": "License and source metadata displayed before model installation.",
+      "type": "object",
+      "required": [
+        "expression",
+        "source"
+      ],
+      "properties": {
+        "expression": {
+          "description": "SPDX license expression or `LicenseRef-*` identifier.",
+          "type": "string"
+        },
+        "notice": {
+          "description": "Optional notice text that must accompany the logical view.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "description": "Human-readable source location.",
+          "type": "string"
+        }
+      }
+    },
+    "MediaType": {
+      "type": "string"
+    },
+    "ModelFile": {
+      "description": "One immutable file in a model manifest.",
+      "type": "object",
+      "required": [
+        "bytes",
+        "digest",
+        "media_type",
+        "path"
+      ],
+      "properties": {
+        "bytes": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "digest": {
+          "$ref": "#/definitions/Sha256Digest"
+        },
+        "media_type": {
+          "$ref": "#/definitions/MediaType"
+        },
+        "path": {
+          "$ref": "#/definitions/RelativePath"
+        }
+      }
+    },
+    "ModelId": {
+      "type": "string"
+    },
+    "RelativePath": {
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "description": "A semantic schema version. Major changes require migration; minor additions are compatible.",
+      "type": "object",
+      "required": [
+        "major",
+        "minor"
+      ],
+      "properties": {
+        "major": {
+          "description": "Compatibility-breaking version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "minor": {
+          "description": "Backward-compatible additive version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    }
+  }
+}

@@ -23,7 +23,7 @@ pub use canonical::{
 pub use digest::Sha256Digest;
 pub use error::CoreError;
 pub use geometry::{CoordinateSpace, CoordinateTransform, PageRect, Rect, Unit};
-pub use id::{DocumentId, EvidenceId, ModelId, PageId, RegionId, RequestId};
+pub use id::{ArtifactId, DocumentId, EvidenceId, LayerId, ModelId, PageId, RegionId, RequestId};
 pub use manifest::{
     AcceptanceRequirement, LicenseMetadata, ModelFile, ModelManifest, RelativePath,
 };

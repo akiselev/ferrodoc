@@ -1,0 +1,1158 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Document",
+  "description": "A versioned evidence graph for a document.",
+  "type": "object",
+  "required": [
+    "id",
+    "input_digest",
+    "metadata",
+    "pages",
+    "schema_version"
+  ],
+  "properties": {
+    "id": {
+      "description": "Stable document identity.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/DocumentId"
+        }
+      ]
+    },
+    "input_digest": {
+      "description": "Original input digest.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        }
+      ]
+    },
+    "metadata": {
+      "description": "Source metadata.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/DocumentMetadata"
+        }
+      ]
+    },
+    "pages": {
+      "description": "Ordered pages.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Page"
+      }
+    },
+    "schema_version": {
+      "description": "Persistent schema version.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SchemaVersion"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "ArtifactId": {
+      "type": "string"
+    },
+    "BlobId": {
+      "type": "string"
+    },
+    "CoordinateSpace": {
+      "description": "Coordinate-space identity carried by every rectangle.",
+      "oneOf": [
+        {
+          "description": "PDF user space.",
+          "type": "string",
+          "enum": [
+            "pdf"
+          ]
+        },
+        {
+          "description": "A raster image.",
+          "type": "string",
+          "enum": [
+            "image"
+          ]
+        },
+        {
+          "description": "Page-normalized coordinates in the inclusive range zero through one.",
+          "type": "string",
+          "enum": [
+            "normalized"
+          ]
+        }
+      ]
+    },
+    "CoordinateTransform": {
+      "description": "A finite two-dimensional affine transform `[a, b, c, d, e, f]`.",
+      "type": "array",
+      "items": {
+        "type": "number",
+        "format": "double"
+      },
+      "maxItems": 6,
+      "minItems": 6
+    },
+    "DeterministicProvenance": {
+      "description": "Cache-relevant provenance. It intentionally contains no clock time, host, or run ID.",
+      "type": "object",
+      "required": [
+        "engine_id",
+        "engine_version",
+        "input_digest",
+        "parameters",
+        "schema_version",
+        "stage"
+      ],
+      "properties": {
+        "engine_id": {
+          "description": "Stable engine identifier.",
+          "type": "string"
+        },
+        "engine_version": {
+          "description": "Semantic engine version.",
+          "type": "string"
+        },
+        "input_digest": {
+          "description": "Digest of the input artifact.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        },
+        "model_digest": {
+          "description": "Optional model content digest.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parameters": {
+          "description": "Normalized parameters in sorted key order.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "schema_version": {
+          "description": "Persistent schema version.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SchemaVersion"
+            }
+          ]
+        },
+        "stage": {
+          "description": "Producing pipeline stage.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Stage"
+            }
+          ]
+        }
+      }
+    },
+    "DocumentId": {
+      "type": "string"
+    },
+    "DocumentMetadata": {
+      "description": "Document metadata with deterministic extension ordering.",
+      "type": "object",
+      "properties": {
+        "authors": {
+          "description": "Ordered author names.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extra": {
+          "description": "Additional deterministic metadata.",
+          "default": {},
+          "type": "object",
+          "additionalProperties": true
+        },
+        "language": {
+          "description": "Optional BCP 47 language tag supplied by the source.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "description": "Optional title.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Evidence": {
+      "description": "One hypothesis produced by a source layer or engine.",
+      "type": "object",
+      "required": [
+        "content",
+        "id",
+        "layer_id",
+        "provenance"
+      ],
+      "properties": {
+        "confidence": {
+          "description": "Optional calibrated confidence.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Probability"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content": {
+          "description": "Typed content.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceContent"
+            }
+          ]
+        },
+        "engine_metadata": {
+          "description": "Engine-provided deterministic metadata.",
+          "default": {},
+          "type": "object",
+          "additionalProperties": true
+        },
+        "geometry": {
+          "description": "Optional page geometry.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PageRect"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "description": "Stable evidence identity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceId"
+            }
+          ]
+        },
+        "layer_id": {
+          "description": "Source layer that produced this evidence.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/LayerId"
+            }
+          ]
+        },
+        "provenance": {
+          "description": "Deterministic provenance.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/DeterministicProvenance"
+            }
+          ]
+        }
+      }
+    },
+    "EvidenceContent": {
+      "description": "Typed evidence payload.",
+      "oneOf": [
+        {
+          "description": "Plain or styled text represented as Unicode.",
+          "type": "object",
+          "required": [
+            "kind",
+            "text"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            },
+            "text": {
+              "description": "Extracted text.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "Structured table cells.",
+          "type": "object",
+          "required": [
+            "cells",
+            "columns",
+            "kind",
+            "rows"
+          ],
+          "properties": {
+            "cells": {
+              "description": "Cells with explicit spans.",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/TableCell"
+              }
+            },
+            "columns": {
+              "description": "Column count.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "table"
+              ]
+            },
+            "rows": {
+              "description": "Row count.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "Mathematical formula.",
+          "type": "object",
+          "required": [
+            "kind",
+            "latex"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "formula"
+              ]
+            },
+            "latex": {
+              "description": "Normalized LaTeX source.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "Image reference.",
+          "type": "object",
+          "required": [
+            "artifact",
+            "kind"
+          ],
+          "properties": {
+            "alt": {
+              "description": "Optional alternative text.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "artifact": {
+              "description": "Stable render artifact identity.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/ArtifactId"
+                }
+              ]
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "image"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Forward-compatible payload retained without interpretation.",
+          "type": "object",
+          "required": [
+            "kind",
+            "media_type",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            },
+            "media_type": {
+              "description": "Producer-defined media type.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/MediaType"
+                }
+              ]
+            },
+            "value": {
+              "description": "JSON payload."
+            }
+          }
+        }
+      ]
+    },
+    "EvidenceId": {
+      "type": "string"
+    },
+    "LayerId": {
+      "type": "string"
+    },
+    "MediaType": {
+      "type": "string"
+    },
+    "Page": {
+      "description": "One document page and all evidence attached to it.",
+      "type": "object",
+      "required": [
+        "bounds",
+        "id",
+        "index"
+      ],
+      "properties": {
+        "artifacts": {
+          "description": "Render artifacts in deterministic order.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RenderArtifact"
+          }
+        },
+        "bounds": {
+          "description": "Complete page geometry.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PageRect"
+            }
+          ]
+        },
+        "id": {
+          "description": "Stable page identity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PageId"
+            }
+          ]
+        },
+        "index": {
+          "description": "Zero-based page index.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "layers": {
+          "description": "Source layers in deterministic order.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SourceLayer"
+          }
+        },
+        "reading_order": {
+          "description": "Reading-order graph edges.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReadingOrderEdge"
+          }
+        },
+        "regions": {
+          "description": "Semantic regions in deterministic order.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Region"
+          }
+        }
+      }
+    },
+    "PageId": {
+      "type": "string"
+    },
+    "PageRect": {
+      "description": "Geometry associated with a zero-based page index and source transform.",
+      "type": "object",
+      "required": [
+        "page_index",
+        "rect",
+        "source_transform"
+      ],
+      "properties": {
+        "page_index": {
+          "description": "Zero-based page index.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "rect": {
+          "description": "Rectangle in its declared coordinate space.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Rect"
+            }
+          ]
+        },
+        "source_transform": {
+          "description": "Transform from the source coordinate system to the rectangle space.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/CoordinateTransform"
+            }
+          ]
+        }
+      }
+    },
+    "Probability": {
+      "description": "A finite probability in the inclusive range zero through one.",
+      "type": "number",
+      "format": "double"
+    },
+    "ReadingOrderEdge": {
+      "description": "Directed reading-order edge.",
+      "type": "object",
+      "required": [
+        "after",
+        "before"
+      ],
+      "properties": {
+        "after": {
+          "description": "Region read next.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RegionId"
+            }
+          ]
+        },
+        "before": {
+          "description": "Region read first.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RegionId"
+            }
+          ]
+        }
+      }
+    },
+    "Rect": {
+      "description": "A finite, nonnegative-size rectangle in an explicit space and unit.",
+      "type": "object",
+      "required": [
+        "height",
+        "space",
+        "unit",
+        "width",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "height": {
+          "type": "number",
+          "format": "double"
+        },
+        "space": {
+          "$ref": "#/definitions/CoordinateSpace"
+        },
+        "unit": {
+          "$ref": "#/definitions/Unit"
+        },
+        "width": {
+          "type": "number",
+          "format": "double"
+        },
+        "x": {
+          "type": "number",
+          "format": "double"
+        },
+        "y": {
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "Region": {
+      "description": "A semantic page region containing competing evidence.",
+      "type": "object",
+      "required": [
+        "geometry",
+        "id",
+        "kind"
+      ],
+      "properties": {
+        "evidence": {
+          "description": "Append-only evidence records.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Evidence"
+          }
+        },
+        "geometry": {
+          "description": "Page geometry.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PageRect"
+            }
+          ]
+        },
+        "id": {
+          "description": "Stable region identity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RegionId"
+            }
+          ]
+        },
+        "kind": {
+          "description": "Semantic kind.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RegionKind"
+            }
+          ]
+        },
+        "selected": {
+          "description": "Optional selected view.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SelectedView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "RegionId": {
+      "type": "string"
+    },
+    "RegionKind": {
+      "description": "Semantic region kind with one canonical snake-case representation.",
+      "oneOf": [
+        {
+          "description": "Unknown or unclassified content.",
+          "type": "string",
+          "enum": [
+            "unknown"
+          ]
+        },
+        {
+          "description": "Paragraph text.",
+          "type": "string",
+          "enum": [
+            "paragraph"
+          ]
+        },
+        {
+          "description": "Heading text.",
+          "type": "string",
+          "enum": [
+            "heading"
+          ]
+        },
+        {
+          "description": "List container.",
+          "type": "string",
+          "enum": [
+            "list"
+          ]
+        },
+        {
+          "description": "List item.",
+          "type": "string",
+          "enum": [
+            "list_item"
+          ]
+        },
+        {
+          "description": "Table.",
+          "type": "string",
+          "enum": [
+            "table"
+          ]
+        },
+        {
+          "description": "Table cell.",
+          "type": "string",
+          "enum": [
+            "table_cell"
+          ]
+        },
+        {
+          "description": "Mathematical formula.",
+          "type": "string",
+          "enum": [
+            "formula"
+          ]
+        },
+        {
+          "description": "Figure or illustration.",
+          "type": "string",
+          "enum": [
+            "figure"
+          ]
+        },
+        {
+          "description": "Caption.",
+          "type": "string",
+          "enum": [
+            "caption"
+          ]
+        },
+        {
+          "description": "Source code.",
+          "type": "string",
+          "enum": [
+            "code"
+          ]
+        },
+        {
+          "description": "Repeating page header.",
+          "type": "string",
+          "enum": [
+            "header"
+          ]
+        },
+        {
+          "description": "Repeating page footer.",
+          "type": "string",
+          "enum": [
+            "footer"
+          ]
+        },
+        {
+          "description": "Footnote.",
+          "type": "string",
+          "enum": [
+            "footnote"
+          ]
+        },
+        {
+          "description": "Handwriting.",
+          "type": "string",
+          "enum": [
+            "handwriting"
+          ]
+        }
+      ]
+    },
+    "RenderArtifact": {
+      "description": "A deterministic raster or other derived artifact.",
+      "type": "object",
+      "required": [
+        "blob_id",
+        "digest",
+        "id",
+        "media_type"
+      ],
+      "properties": {
+        "blob_id": {
+          "description": "Host-scoped blob token. No host path is serialized.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlobId"
+            }
+          ]
+        },
+        "digest": {
+          "description": "Content digest.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        },
+        "height": {
+          "description": "Raster height when applicable.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "id": {
+          "description": "Stable artifact identity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ArtifactId"
+            }
+          ]
+        },
+        "media_type": {
+          "description": "Media type.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/MediaType"
+            }
+          ]
+        },
+        "width": {
+          "description": "Raster width when applicable.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "SchemaVersion": {
+      "description": "A semantic schema version. Major changes require migration; minor additions are compatible.",
+      "type": "object",
+      "required": [
+        "major",
+        "minor"
+      ],
+      "properties": {
+        "major": {
+          "description": "Compatibility-breaking version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "minor": {
+          "description": "Backward-compatible additive version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "SelectedView": {
+      "description": "Selected view over one or more evidence records.",
+      "type": "object",
+      "required": [
+        "evidence_ids",
+        "explanation",
+        "reason"
+      ],
+      "properties": {
+        "evidence_ids": {
+          "description": "Evidence records consumed by the selection.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EvidenceId"
+          }
+        },
+        "explanation": {
+          "description": "Human-readable deterministic explanation.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Machine-readable reason.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SelectionReason"
+            }
+          ]
+        }
+      }
+    },
+    "SelectionReason": {
+      "description": "Machine-readable selection reason.",
+      "oneOf": [
+        {
+          "description": "Native evidence passed the configured quality policy.",
+          "type": "string",
+          "enum": [
+            "native_quality"
+          ]
+        },
+        {
+          "description": "OCR was selected because native evidence was absent.",
+          "type": "string",
+          "enum": [
+            "native_absent"
+          ]
+        },
+        {
+          "description": "OCR was selected because native evidence was below threshold.",
+          "type": "string",
+          "enum": [
+            "native_below_threshold"
+          ]
+        },
+        {
+          "description": "Multiple records were deterministically reconciled.",
+          "type": "string",
+          "enum": [
+            "reconciled"
+          ]
+        },
+        {
+          "description": "A caller explicitly selected evidence.",
+          "type": "string",
+          "enum": [
+            "user_override"
+          ]
+        }
+      ]
+    },
+    "Sha256Digest": {
+      "type": "string"
+    },
+    "SourceLayer": {
+      "description": "One immutable evidence-producing layer.",
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "provenance"
+      ],
+      "properties": {
+        "id": {
+          "description": "Stable layer identity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/LayerId"
+            }
+          ]
+        },
+        "kind": {
+          "description": "Layer kind.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SourceLayerKind"
+            }
+          ]
+        },
+        "provenance": {
+          "description": "Deterministic producing provenance.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/DeterministicProvenance"
+            }
+          ]
+        }
+      }
+    },
+    "SourceLayerKind": {
+      "description": "Provenance-bearing source layer kind.",
+      "oneOf": [
+        {
+          "description": "Native PDF content.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "native_pdf"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Rasterized source content.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "raster"
+              ]
+            }
+          }
+        },
+        {
+          "description": "OCR hypothesis layer.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "ocr"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Layout hypothesis layer.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "layout"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Forward-compatible producer-defined kind.",
+          "type": "object",
+          "required": [
+            "kind",
+            "name"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Stage": {
+      "description": "A deterministic pipeline stage.",
+      "oneOf": [
+        {
+          "description": "Input acquisition and hashing.",
+          "type": "string",
+          "enum": [
+            "acquire"
+          ]
+        },
+        {
+          "description": "Document inspection.",
+          "type": "string",
+          "enum": [
+            "inspect"
+          ]
+        },
+        {
+          "description": "Native content extraction.",
+          "type": "string",
+          "enum": [
+            "native_extract"
+          ]
+        },
+        {
+          "description": "Page rasterization.",
+          "type": "string",
+          "enum": [
+            "rasterize"
+          ]
+        },
+        {
+          "description": "Layout analysis.",
+          "type": "string",
+          "enum": [
+            "layout"
+          ]
+        },
+        {
+          "description": "Optical character recognition.",
+          "type": "string",
+          "enum": [
+            "ocr"
+          ]
+        },
+        {
+          "description": "Evidence reconciliation.",
+          "type": "string",
+          "enum": [
+            "reconcile"
+          ]
+        },
+        {
+          "description": "Output rendering.",
+          "type": "string",
+          "enum": [
+            "render"
+          ]
+        }
+      ]
+    },
+    "TableCell": {
+      "description": "A structured table cell.",
+      "type": "object",
+      "required": [
+        "column",
+        "column_span",
+        "row",
+        "row_span",
+        "text"
+      ],
+      "properties": {
+        "column": {
+          "description": "Zero-based column.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "column_span": {
+          "description": "Number of columns occupied.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "row": {
+          "description": "Zero-based row.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "row_span": {
+          "description": "Number of rows occupied.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "text": {
+          "description": "Cell text.",
+          "type": "string"
+        }
+      }
+    },
+    "Unit": {
+      "description": "Unit associated with a coordinate space.",
+      "oneOf": [
+        {
+          "description": "One PDF point, equal to 1/72 inch.",
+          "type": "string",
+          "enum": [
+            "point"
+          ]
+        },
+        {
+          "description": "One raster pixel.",
+          "type": "string",
+          "enum": [
+            "pixel"
+          ]
+        },
+        {
+          "description": "Unitless normalized ratio.",
+          "type": "string",
+          "enum": [
+            "ratio"
+          ]
+        }
+      ]
+    }
+  }
+}

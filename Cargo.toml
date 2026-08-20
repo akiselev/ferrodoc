@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/ferrodoc-core",
+  "crates/ferrodoc-ir",
 ]
 default-members = ["crates/ferrodoc-core"]
 
@@ -16,7 +17,7 @@ authors = ["Ferrodoc contributors"]
 chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
 proptest = "1.7"
-schemars = { version = "0.8", features = ["chrono", "uuid1"] }
+schemars = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["float_roundtrip"] }
 sha2 = "0.10"
