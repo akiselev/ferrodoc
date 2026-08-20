@@ -16,9 +16,36 @@ jobs:
       - run: cargo metadata --locked --format-version 1 > /dev/null
       - run: ./scripts/check-workspace.sh
       - run: ./scripts/check-boundaries.sh
+      - run: cargo run --locked -p xtask -- doctor
       - run: cargo fmt --all -- --check
       - run: cargo check --workspace --all-targets --locked
       - run: cargo test --workspace --locked
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo run --locked -p ferrodoc-ir --example export_snapshots
+      - run: cargo run --locked -p ferrodoc-pdf --example generate_fixtures
       - run: ./scripts/smoke.sh
       - run: git diff --exit-code
+
+  vertical-slice-ocrs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Fetch and verify optional OCRS models
+        run: |
+          mkdir -p "$RUNNER_TEMP/ocrs-models"
+          curl --fail --location --silent --show-error \
+            https://ocrs-models.s3-accelerate.amazonaws.com/text-detection.rten \
+            --output "$RUNNER_TEMP/ocrs-models/text-detection.rten"
+          curl --fail --location --silent --show-error \
+            https://ocrs-models.s3-accelerate.amazonaws.com/text-recognition.rten \
+            --output "$RUNNER_TEMP/ocrs-models/text-recognition.rten"
+          echo "f15cfb56bd02c4bf478a20343986504a1f01e1665c2b3a0ad66340f054b1b5ca  $RUNNER_TEMP/ocrs-models/text-detection.rten" | sha256sum --check
+          echo "e484866d4cce403175bd8d00b128feb08ab42e208de30e42cd9889d8f1735a6e  $RUNNER_TEMP/ocrs-models/text-recognition.rten" | sha256sum --check
+      - name: Test scanned and hybrid conversion
+        env:
+          FERRODOC_TEST_OCRS_MODEL_DIR: ${{ runner.temp }}/ocrs-models
+        run: cargo test --locked -p ferrodoc --test cli model_backed_scan_and_hybrid_when_models_are_provided -- --exact

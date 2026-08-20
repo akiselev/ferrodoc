@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-Ferrodoc is a document extraction compiler. It will acquire immutable input, collect deterministic and learned evidence, select work under policy and hardware constraints, reconcile without destroying hypotheses, and render a selected view. Phase 1 establishes the contracts only; PDF conversion begins in Phase 2.
+Ferrodoc is a document extraction compiler. It acquires immutable input, collects deterministic and learned evidence, reconciles without destroying hypotheses, and renders a selected view. Phase 2 implements the embedded CPU vertical slice; policy-rich planning and isolated process execution remain later phases.
 
 ## Package boundaries
 
@@ -11,22 +11,25 @@ ferrodoc-core
 ├── ferrodoc-ir
 │   ├── ferrodoc-engine-api
 │   │   ├── ferrodoc-protocol
-│   │   └── ferrodoc-runtime
+│   │   ├── ferrodoc-runtime
+│   │   ├── ferrodoc-layout-rulebased
+│   │   └── ferrodoc-engine-ocrs
 │   └── ferrodoc-render
 ├── ferrodoc-pdf
-└── ferrodoc CLI skeleton
+└── ferrodoc CLI
 ```
 
 - `ferrodoc-core` owns validated runtime-agnostic primitives: geometry, quantities, digests, stable IDs, scoped blobs, model manifests, resource estimates, device/backend/placement axes, schema versions, and provenance.
 - `ferrodoc-ir` owns persistent document semantics and canonical evidence-graph JSON.
 - `ferrodoc-engine-api` owns blocking engine semantics, descriptors, health, estimates, requests, responses, cancellation, deadlines, and errors.
-- `ferrodoc-protocol` owns versioned process message schemas. It has no framing or process I/O in Phase 1.
-- `ferrodoc-runtime` currently owns explicit embedded-engine registration. Planning, scheduling, process hosting, caching, and model storage are later modules of this crate.
-- `ferrodoc-pdf` owns parser limits and immutable PDF acquisition identity. It deliberately has no parser dependency yet.
-- `ferrodoc-render` owns deterministic output. Only canonical full-evidence JSON exists in Phase 1.
-- `ferrodoc` is a truthful CLI skeleton exposing version and phase status only.
+- `ferrodoc-protocol` owns versioned process message schemas. Framing and process I/O enter in Phase 3.
+- `ferrodoc-runtime` owns embedded registration, native-quality routing, evidence append, deterministic reconciliation, plans, and traces. Scheduling, process hosting, caching, and model storage remain later modules.
+- `ferrodoc-pdf` performs bounded inspection/native extraction with lopdf and deterministic pure-Rust rasterization with Hayro.
+- `ferrodoc-layout-rulebased` and `ferrodoc-engine-ocrs` implement the common engine trait. OCRS model bytes are injected explicitly and never acquired by the engine.
+- `ferrodoc-render` emits deterministic Markdown, semantic HTML, and canonical full-evidence JSON.
+- `ferrodoc` exposes conversion, inspection, planning, trace explanation, and conservative hardware reporting.
 
-The default dependency graph contains no OCR, PDF parser, GPU, model runtime, HTTP client, async runtime, or native binary download feature. `scripts/check-boundaries.sh` enforces the runtime-agnostic package boundary in CI.
+The runtime-agnostic contract crates contain no OCR, PDF parser, GPU, model runtime, HTTP client, async runtime, or native binary download feature. The default application is pure Rust and has no build-time model or binary download. `scripts/check-boundaries.sh` enforces the contract boundary in CI.
 
 ## Determinism and observations
 
@@ -34,7 +37,7 @@ The default dependency graph contains no OCR, PDF parser, GPU, model runtime, HT
 
 ## Trust boundaries
 
-Engine request schemas carry `BlobId` plus a checked, nonempty `BlobRange`; they never carry a host path. The host retains responsibility for immutable registration, path/symlink containment, range enforcement, and optional digest verification. Those resolver guarantees and adversarial tests enter with process transport in Phase 3.
+Engine request schemas carry `BlobId` plus a checked, nonempty `BlobRange`; they never carry a host path. The embedded host verifies token, range, and digest before returning bytes. Filesystem containment and adversarial process-boundary tests enter with process transport in Phase 3.
 
 PDF input is hostile. `ferrodoc-pdf` applies byte limits before parsing and defines page, object, recursion, and raster limits for Phase 2 implementations.
 
