@@ -4,7 +4,20 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+authors.workspace = true
+description = "Offline evidence-preserving document conversion"
 
 [[bin]]
 name = "ferrodoc"
 path = "src/main.rs"
+
+[dependencies]
+ferrodoc-core = { path = "../ferrodoc-core" }
+ferrodoc-engine-api = { path = "../ferrodoc-engine-api" }
+ferrodoc-pdf = { path = "../ferrodoc-pdf" }
+ferrodoc-render = { path = "../ferrodoc-render" }
+ferrodoc-runtime = { path = "../ferrodoc-runtime" }
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true

@@ -9,6 +9,9 @@ members = [
   "crates/ferrodoc-render",
   "crates/ferrodoc-runtime",
   "crates/ferrodoc-cli",
+  "engines/ferrodoc-layout-rulebased",
+  "engines/ferrodoc-engine-ocrs",
+  "tools/xtask",
 ]
 default-members = ["crates/ferrodoc-core"]
 
@@ -22,8 +25,12 @@ authors = ["Ferrodoc contributors"]
 [workspace.dependencies]
 chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
+hayro = "0.7.0"
+lopdf = { version = "0.36.0", default-features = false }
+ocrs = "0.12.2"
 proptest = "1.7"
 schemars = "0.8"
+rten = "0.24.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["float_roundtrip"] }
 sha2 = "0.10"
