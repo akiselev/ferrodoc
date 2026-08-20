@@ -1,0 +1,54 @@
+{
+  "schema_version": {
+    "major": 1,
+    "minor": 0
+  },
+  "generator_version": "ferrodoc-real-regression/1",
+  "spec_digest": "747981cd2bc96dae1d73f564c4dbc0d8719e9145f02a9263369461e48d7f3dbc",
+  "seed": 0,
+  "assets": [
+    {
+      "id": "fixture-generator-source",
+      "license": "MIT OR Apache-2.0",
+      "source": "crates/ferrodoc-pdf/examples/generate_fixtures.rs",
+      "redistribution": "redistributable",
+      "digest": "620ffba59b76debd9424f47d98379fed7089c4f750071c377dbc5948cd47bab0"
+    },
+    {
+      "id": "pdf-standard-font-helvetica",
+      "license": "ISO-32000-built-in",
+      "source": "PDF standard Type1 Helvetica",
+      "redistribution": "built_in",
+      "digest": null
+    }
+  ],
+  "cases": [
+    {
+      "id": "real_born_digital_a02fd5dc44fa",
+      "case_identity": "a02fd5dc44fae299385be21c2af80d9ac2e6897654fe4ac45692270ccf757efa",
+      "partition": "regression",
+      "document": "fixtures/pdf/born-digital.pdf",
+      "truth": "benchmarks/real-regression/truth/real_born_digital_a02fd5dc44fa.json",
+      "document_digest": "025471e0be97d33c8814070cd2c5fe675b2145c9e58f51d5802676495c221a9c",
+      "truth_digest": "0740efe6069a970f3b81916077d8d3e09bf391905936848d41ba19a6a5f844e6",
+      "categories": [
+        "heading",
+        "paragraph"
+      ]
+    },
+    {
+      "id": "real_image_only_b9236636ec15",
+      "case_identity": "b9236636ec15a34390cbf1cf31dc3dd1bb52623029df5ba0a766c60cfec3844e",
+      "partition": "regression",
+      "document": "fixtures/pdf/image-only.pdf",
+      "truth": "benchmarks/real-regression/truth/real_image_only_b9236636ec15.json",
+      "document_digest": "b58e7fb3c8024c76fde913ff004444002250938242286e6147a83d6eefd9e071",
+      "truth_digest": "703f15f502680630afc4d646b88e7b62bc56f6a20acb6e59304d5e254cde79ec",
+      "categories": [
+        "heading",
+        "paragraph"
+      ]
+    }
+  ],
+  "corpus_digest": "9ca75658e0db622584320467b7cc312cff9f4409c2909d62c0a78df7fcd4f6d5"
+}

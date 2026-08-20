@@ -37,6 +37,16 @@ fn doctor() -> Result<(), String> {
         "schemas/protocol-response-v1.json",
         "models/ocrs-cpu.json",
         "models/README.md",
+        "benchmarks/foundry-smoke.json",
+        "benchmarks/real-regression/manifest.json",
+        "schemas/foundry-spec-v1.json",
+        "schemas/corpus-manifest-v1.json",
+        "schemas/corpus-truth-v1.json",
+        "schemas/benchmark-predictions-v1.json",
+        "schemas/benchmark-report-v1.json",
+        "schemas/benchmark-comparison-v1.json",
+        "scripts/benchmark-smoke.sh",
+        "docs/benchmarking.md",
     ] {
         if !Path::new(required).is_file() {
             return Err(format!("required repository file {required:?} is missing"));

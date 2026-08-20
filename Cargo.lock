@@ -415,6 +415,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ferrodoc-bench"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-core",
+ "ferrodoc-foundry",
+ "libc",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "unicode-normalization",
+]
+
+[[package]]
 name = "ferrodoc-core"
 version = "0.2.0"
 dependencies = [
@@ -466,6 +481,21 @@ dependencies = [
  "ocrs",
  "rten",
  "serde_json",
+]
+
+[[package]]
+name = "ferrodoc-foundry"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-core",
+ "ferrodoc-pdf",
+ "lopdf",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "uuid",
 ]
 
 [[package]]

@@ -991,8 +991,8 @@ Every phase PR updates this table. Use only: `planned`, `in progress`, `blocked`
 | 1 — foundations and IR | complete | local merge | `8e6e44f` | all 47 tests and local gates passed; see `docs/phase-1-pr.md` |
 | 2 — minimal conversion | complete | local merge | `90f7266` | all 69 default tests, model-backed scan/hybrid test, offline smoke, and Lightbulb born-digital conversion passed; see `docs/phase-2-pr.md` |
 | 3 — process protocol | complete | local merge | `9e2d3f8` | full gates and mock/layout/OCRS process parity passed; merged as `58137d5`; see `docs/phase-3-pr.md` |
-| 4 — resource runtime | in progress | — | `58137d5` | runtime module inventory and contract design started |
-| 5 — trustworthy benchmarks | planned | — | — | — |
+| 4 — resource runtime | complete | local merge | `58137d5` | 113 tests, real-model store/doctor/cache checks, offline smoke, and Lightbulb resource regressions passed; merged as `b9e1bcf`; see `docs/phase-4-pr.md` |
+| 5 — trustworthy benchmarks | in progress | — | `b9e1bcf` | foundry and benchmark contract inventory started |
 | 6 — qualified engines | planned | — | — | — |
 | 7 — routing and research | planned | — | — | — |
 | 8 — release v0.2 | planned | — | — | — |

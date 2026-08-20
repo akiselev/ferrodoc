@@ -4,7 +4,7 @@ Ferrodoc is a pre-release Rust project for offline, evidence-preserving document
 
 ## Current status
 
-Repository recovery through the Phase 4 resource runtime is implemented. Born-digital PDFs convert without models. Scanned and hybrid PDFs use the pure-Rust OCRS engine when an explicit verified model pair is supplied. Engines can run embedded or over the bounded process protocol; conversion applies explainable hard constraints, scheduler leases, and an optional deterministic stage cache. The foundry and benchmark runner enter in later phases.
+Repository recovery through the Phase 4 resource runtime is implemented, with the Phase 5 foundry and integrity-first benchmark loop available. Born-digital PDFs convert without models. Scanned and hybrid PDFs use the pure-Rust OCRS engine when an explicit verified model pair is supplied. Engines can run embedded or over the bounded process protocol; conversion applies explainable hard constraints, scheduler leases, and an optional deterministic stage cache.
 
 The implementation sequence and acceptance gates are defined in [PLAN.md](PLAN.md). Current work is summarized in [STATUS.md](STATUS.md), and the discarded source payload is documented in [docs/recovery-inventory.md](docs/recovery-inventory.md).
 
@@ -24,6 +24,7 @@ cargo check --workspace --all-targets --locked
 cargo test --workspace --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 ./scripts/smoke.sh
+./scripts/benchmark-smoke.sh
 ```
 
 ## Quick start
@@ -44,6 +45,8 @@ cargo run --locked -p ferrodoc -- models list --store .ferrodoc/models
 Ferrodoc never downloads models during build or conversion. The checked-in [OCRS manifest](models/ocrs-cpu.json) records exact sizes, SHA-256 digests, source, revision, license, and required acceptance. `models pull` installs an already acquired pair atomically from a local directory; see [models/README.md](models/README.md). Conversion can still load that verified logical directory with `--ocrs-model-dir DIR`.
 
 `plan` accepts profiles plus hard `--max-ram`, `--max-vram`, `--max-cost-microusd`, and `--deadline-ms` constraints. Unknown values fail hard limits unless `--allow-unknown-estimates` explicitly requests guarded execution. `--cache-dir DIR` enables atomic stage caching from input, model, engine, schema, page, seed, and normalized-parameter identity.
+
+The deterministic foundry, real regression corpus, evaluator contracts, metrics, measurement evidence, held-out rules, and Pareto comparison workflow are described in [Benchmarking and corpus governance](docs/benchmarking.md). The default benchmark smoke is offline and explicitly verifies that missing work scores as failure rather than success.
 
 ## Design invariants
 

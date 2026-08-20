@@ -16,6 +16,8 @@ ferrodoc-core
 │   │   └── ferrodoc-engine-ocrs
 │   └── ferrodoc-render
 ├── ferrodoc-pdf
+├── ferrodoc-foundry
+├── ferrodoc-bench
 └── ferrodoc CLI
 ```
 
@@ -28,6 +30,8 @@ ferrodoc-core
 - `ferrodoc-pdf` performs bounded inspection/native extraction with lopdf and deterministic pure-Rust rasterization with Hayro.
 - `ferrodoc-layout-rulebased` and `ferrodoc-engine-ocrs` implement the common engine trait. OCRS model bytes are injected explicitly and never acquired by the engine.
 - `ferrodoc-render` emits deterministic Markdown, semantic HTML, and canonical full-evidence JSON.
+- `ferrodoc-foundry` owns deterministic synthetic PDFs, semantic truth, licensed asset declarations, non-overlapping partitions, and content-bound corpus manifests.
+- `ferrodoc-bench` owns prediction/report schemas, complete case accounting, quality metrics, measurement evidence, and policy-specific Pareto comparison. It verifies corpus bytes before scoring.
 - `ferrodoc` exposes conversion, inspection, planning, trace/resource explanation, hardware reporting, model-store operations, and categorized plugin diagnostics.
 
 The runtime-agnostic contract crates contain no OCR, PDF parser, GPU, model runtime, HTTP client, async runtime, or native binary download feature. The default application is pure Rust and has no build-time model or binary download. `scripts/check-boundaries.sh` enforces the contract boundary in CI.
@@ -49,3 +53,4 @@ The `Engine` trait is synchronous and `Send`. Blocking native libraries therefor
 Candidate planning rejects unknown hard estimates by default and never invents a fallback. The scheduler grants CPU-worker, host-RAM, and per-device leases; an explicitly guarded unknown estimate reserves the entire relevant budget. Cache entries are published atomically and keyed only by semantic identity. Hardware measurements and cache/lease outcomes remain outside canonical document identity.
 
 See [ADR 0001](adr/0001-consolidate-runtime.md) and [ADR 0002](adr/0002-transport-independent-engines.md).
+Benchmark integrity and held-out governance are specified in [Benchmarking and corpus governance](benchmarking.md).

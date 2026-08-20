@@ -1,0 +1,53 @@
+{
+  "schema_version": {
+    "major": 1,
+    "minor": 0
+  },
+  "case_id": "real_image_only_b9236636ec15",
+  "text": "SCANNED FERRODOC PAGE\nOptical text survives the CPU path.",
+  "regions": [
+    {
+      "id": "heading",
+      "kind": "heading",
+      "text": "SCANNED FERRODOC PAGE",
+      "rect": {
+        "x": 70.0,
+        "y": 522.0,
+        "width": 365.0,
+        "height": 36.0
+      }
+    },
+    {
+      "id": "paragraph-1",
+      "kind": "paragraph",
+      "text": "Optical text survives the CPU path.",
+      "rect": {
+        "x": 70.0,
+        "y": 474.0,
+        "width": 340.0,
+        "height": 24.0
+      }
+    }
+  ],
+  "reading_order": [
+    [
+      "heading",
+      "paragraph-1"
+    ]
+  ],
+  "tables": [],
+  "formulas": [],
+  "provenance": {
+    "generator_version": "ferrodoc-real-regression/1",
+    "seed": 0,
+    "degradation": {
+      "kind": "scan",
+      "dpi": 144,
+      "noise_per_mille": 0
+    },
+    "assets": [
+      "fixture-generator-source",
+      "pdf-standard-font-helvetica"
+    ]
+  }
+}

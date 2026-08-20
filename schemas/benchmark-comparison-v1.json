@@ -1,0 +1,294 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ComparisonReport",
+  "description": "Complete multidimensional comparison.",
+  "type": "object",
+  "required": [
+    "cases",
+    "corpus_digest",
+    "dimension_deltas",
+    "dominance",
+    "policy",
+    "variance_notes"
+  ],
+  "properties": {
+    "cases": {
+      "description": "Per-case regressions and improvements.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CaseDelta"
+      }
+    },
+    "corpus_digest": {
+      "description": "Exact corpus digest.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        }
+      ]
+    },
+    "dimension_deltas": {
+      "description": "Candidate-minus-baseline normalized dimension deltas; higher is better.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/EvidenceValue_for_double"
+      }
+    },
+    "dominance": {
+      "description": "Pareto relationship.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Dominance"
+        }
+      ]
+    },
+    "policy": {
+      "description": "Applied policy.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ComparisonPolicy"
+        }
+      ]
+    },
+    "variance_notes": {
+      "description": "Visible repeated-sample variance notes.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "definitions": {
+    "CaseDelta": {
+      "description": "One case-level comparison.",
+      "type": "object",
+      "required": [
+        "baseline_status",
+        "candidate_status",
+        "case_id"
+      ],
+      "properties": {
+        "baseline_status": {
+          "description": "Baseline outcome summary.",
+          "type": "string"
+        },
+        "candidate_status": {
+          "description": "Candidate outcome summary.",
+          "type": "string"
+        },
+        "case_id": {
+          "description": "Case ID.",
+          "type": "string"
+        },
+        "quality_delta": {
+          "description": "Candidate quality minus baseline quality when both succeeded.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "ComparisonPolicy": {
+      "description": "Dimensions and numerical tolerances used for comparison.",
+      "type": "object",
+      "required": [
+        "required"
+      ],
+      "properties": {
+        "required": {
+          "description": "Dimensions required to be known and considered.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Dimension"
+          },
+          "uniqueItems": true
+        },
+        "tolerances": {
+          "description": "No-worse/better tolerance per dimension in its native units.",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      }
+    },
+    "Dimension": {
+      "description": "Dimension used for policy-specific Pareto comparison.",
+      "oneOf": [
+        {
+          "description": "Higher aggregate quality is better.",
+          "type": "string",
+          "enum": [
+            "quality"
+          ]
+        },
+        {
+          "description": "Higher throughput is better.",
+          "type": "string",
+          "enum": [
+            "throughput"
+          ]
+        },
+        {
+          "description": "Lower latency is better.",
+          "type": "string",
+          "enum": [
+            "latency"
+          ]
+        },
+        {
+          "description": "Lower peak RAM is better.",
+          "type": "string",
+          "enum": [
+            "ram"
+          ]
+        },
+        {
+          "description": "Lower peak VRAM is better.",
+          "type": "string",
+          "enum": [
+            "vram"
+          ]
+        },
+        {
+          "description": "Lower remote cost is better.",
+          "type": "string",
+          "enum": [
+            "cost"
+          ]
+        },
+        {
+          "description": "Lower failure rate is better.",
+          "type": "string",
+          "enum": [
+            "failure_rate"
+          ]
+        }
+      ]
+    },
+    "Dominance": {
+      "description": "Pareto relationship between candidate and baseline.",
+      "oneOf": [
+        {
+          "description": "Candidate is no worse in every required dimension and better in at least one.",
+          "type": "string",
+          "enum": [
+            "candidate_dominates"
+          ]
+        },
+        {
+          "description": "Baseline is no worse in every required dimension and better in at least one.",
+          "type": "string",
+          "enum": [
+            "baseline_dominates"
+          ]
+        },
+        {
+          "description": "Each side wins at least one dimension.",
+          "type": "string",
+          "enum": [
+            "tradeoff"
+          ]
+        },
+        {
+          "description": "A required dimension is unknown.",
+          "type": "string",
+          "enum": [
+            "indeterminate"
+          ]
+        },
+        {
+          "description": "All considered dimensions are equal within tolerance.",
+          "type": "string",
+          "enum": [
+            "equal"
+          ]
+        }
+      ]
+    },
+    "EvidenceValue_for_double": {
+      "description": "A value whose evidence class cannot be confused with zero.",
+      "oneOf": [
+        {
+          "description": "Direct observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable measurement method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "measured"
+              ]
+            },
+            "value": {
+              "description": "Observed value.",
+              "type": "number",
+              "format": "double"
+            }
+          }
+        },
+        {
+          "description": "Defensible estimate, not an observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable estimation method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "estimated"
+              ]
+            },
+            "value": {
+              "description": "Estimated value.",
+              "type": "number",
+              "format": "double"
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "reason",
+            "status"
+          ],
+          "properties": {
+            "reason": {
+              "description": "Explanation.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Sha256Digest": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,442 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FoundrySpec",
+  "description": "Versioned foundry input.",
+  "type": "object",
+  "required": [
+    "assets",
+    "cases",
+    "schema_version",
+    "seed"
+  ],
+  "properties": {
+    "assets": {
+      "description": "Fonts and assets used by every case.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AssetSpec"
+      }
+    },
+    "cases": {
+      "description": "Generated cases.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CaseSpec"
+      }
+    },
+    "schema_version": {
+      "description": "Generator-input schema.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SchemaVersion"
+        }
+      ]
+    },
+    "seed": {
+      "description": "Global deterministic seed.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    }
+  },
+  "definitions": {
+    "AssetSpec": {
+      "description": "One explicitly declared font or other generator asset.",
+      "type": "object",
+      "required": [
+        "id",
+        "license",
+        "redistribution",
+        "source"
+      ],
+      "properties": {
+        "digest": {
+          "description": "Digest of bundled bytes; absent only for built-in assets.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "description": "Stable asset identifier.",
+          "type": "string"
+        },
+        "license": {
+          "description": "SPDX expression or `LicenseRef-*` identifier.",
+          "type": "string"
+        },
+        "redistribution": {
+          "description": "Redistribution policy.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RedistributionStatus"
+            }
+          ]
+        },
+        "source": {
+          "description": "Asset source or standard name.",
+          "type": "string"
+        }
+      }
+    },
+    "BlockKind": {
+      "description": "Semantic block category.",
+      "oneOf": [
+        {
+          "description": "Heading text.",
+          "type": "string",
+          "enum": [
+            "heading"
+          ]
+        },
+        {
+          "description": "Paragraph text.",
+          "type": "string",
+          "enum": [
+            "paragraph"
+          ]
+        },
+        {
+          "description": "Table region.",
+          "type": "string",
+          "enum": [
+            "table"
+          ]
+        },
+        {
+          "description": "Formula region.",
+          "type": "string",
+          "enum": [
+            "formula"
+          ]
+        }
+      ]
+    },
+    "BlockSpec": {
+      "description": "One truth region and rendered line.",
+      "type": "object",
+      "required": [
+        "font_size",
+        "height",
+        "id",
+        "kind",
+        "text",
+        "width",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "font_size": {
+          "description": "Font size in points.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "height": {
+          "description": "Approximate truth height.",
+          "type": "number",
+          "format": "double"
+        },
+        "id": {
+          "description": "Stable block-local identifier.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Semantic category.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockKind"
+            }
+          ]
+        },
+        "text": {
+          "description": "Expected Unicode text.",
+          "type": "string"
+        },
+        "width": {
+          "description": "Approximate truth width.",
+          "type": "number",
+          "format": "double"
+        },
+        "x": {
+          "description": "Left PDF coordinate.",
+          "type": "number",
+          "format": "double"
+        },
+        "y": {
+          "description": "Baseline PDF coordinate.",
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "CaseSpec": {
+      "description": "One requested generated case.",
+      "type": "object",
+      "required": [
+        "blocks",
+        "degradation",
+        "name",
+        "partition"
+      ],
+      "properties": {
+        "blocks": {
+          "description": "Ordered semantic blocks.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BlockSpec"
+          }
+        },
+        "degradation": {
+          "description": "Deterministic degradation.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Degradation"
+            }
+          ]
+        },
+        "formulas": {
+          "description": "Formula semantic truth.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FormulaTruth"
+          }
+        },
+        "name": {
+          "description": "Human-readable stable name.",
+          "type": "string"
+        },
+        "partition": {
+          "description": "Non-overlapping benchmark partition.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Partition"
+            }
+          ]
+        },
+        "reading_order": {
+          "description": "Directed reading-order edges using block IDs.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 2
+          }
+        },
+        "tables": {
+          "description": "Table semantic truth.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TableTruth"
+          }
+        }
+      }
+    },
+    "Degradation": {
+      "description": "Deterministic visual/source degradation.",
+      "oneOf": [
+        {
+          "description": "Native text PDF.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "native"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Native PDF with page rotation.",
+          "type": "object",
+          "required": [
+            "degrees",
+            "kind"
+          ],
+          "properties": {
+            "degrees": {
+              "description": "Clockwise degrees; currently 90, 180, or 270.",
+              "type": "integer",
+              "format": "int64"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "rotated"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Raster-only PDF with deterministic RGB perturbation.",
+          "type": "object",
+          "required": [
+            "dpi",
+            "kind",
+            "noise_per_mille"
+          ],
+          "properties": {
+            "dpi": {
+              "description": "Raster resolution.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "scan"
+              ]
+            },
+            "noise_per_mille": {
+              "description": "Fraction of channel values perturbed, in thousandths.",
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            }
+          }
+        }
+      ]
+    },
+    "FormulaTruth": {
+      "description": "Formula semantic truth associated with one spatial block.",
+      "type": "object",
+      "required": [
+        "latex",
+        "region_id"
+      ],
+      "properties": {
+        "latex": {
+          "description": "Canonical expected LaTeX.",
+          "type": "string"
+        },
+        "region_id": {
+          "description": "Associated region ID.",
+          "type": "string"
+        }
+      }
+    },
+    "Partition": {
+      "description": "Non-overlapping corpus partition.",
+      "oneOf": [
+        {
+          "description": "Training or broad exploratory cases.",
+          "type": "string",
+          "enum": [
+            "train"
+          ]
+        },
+        {
+          "description": "Development-time parameter selection cases.",
+          "type": "string",
+          "enum": [
+            "tuning"
+          ]
+        },
+        {
+          "description": "Sealed evaluation cases not used for optimization.",
+          "type": "string",
+          "enum": [
+            "held_out"
+          ]
+        },
+        {
+          "description": "Purpose-built deterministic regression cases.",
+          "type": "string",
+          "enum": [
+            "regression"
+          ]
+        }
+      ]
+    },
+    "RedistributionStatus": {
+      "description": "Redistribution status for an asset used by generated documents.",
+      "oneOf": [
+        {
+          "description": "Asset bytes may be redistributed under the recorded license.",
+          "type": "string",
+          "enum": [
+            "redistributable"
+          ]
+        },
+        {
+          "description": "Asset is a PDF/system built-in and contributes no bundled bytes.",
+          "type": "string",
+          "enum": [
+            "built_in"
+          ]
+        },
+        {
+          "description": "Asset may only be referenced locally and cannot enter a published corpus.",
+          "type": "string",
+          "enum": [
+            "local_only"
+          ]
+        }
+      ]
+    },
+    "SchemaVersion": {
+      "description": "A semantic schema version. Major changes require migration; minor additions are compatible.",
+      "type": "object",
+      "required": [
+        "major",
+        "minor"
+      ],
+      "properties": {
+        "major": {
+          "description": "Compatibility-breaking version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "minor": {
+          "description": "Backward-compatible additive version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    },
+    "TableTruth": {
+      "description": "Table semantic truth associated with one spatial block.",
+      "type": "object",
+      "required": [
+        "cells",
+        "region_id"
+      ],
+      "properties": {
+        "cells": {
+          "description": "Rectangular cell grid.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "region_id": {
+          "description": "Associated region ID.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}
