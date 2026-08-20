@@ -248,7 +248,17 @@ impl TraceSink for NoTrace {
 
 #[cfg(test)]
 mod tests {
-    use ferrodoc_core::{BlobRange, MediaType};
+    use std::io::Cursor;
+
+    use ferrodoc_core::{BackendId, BlobRange, Capability, DeviceKind, MediaType, RequestId};
+    use ferrodoc_engine_api::{
+        EngineCandidate, EngineCompatibility, EngineDescriptor, EngineRequest, EngineResponse,
+        HardwareInventory, HealthReport, HealthRequest, NetworkUse,
+    };
+    use ferrodoc_protocol::{
+        CURRENT_PROTOCOL_VERSION, ClientHello, ProtocolVersion, RequestEnvelope, ResponseEnvelope,
+        VersionRange,
+    };
 
     use super::*;
 
@@ -277,5 +287,131 @@ mod tests {
             registry.resolve(&escaped).unwrap_err().category,
             EngineErrorCategory::InvalidRequest
         );
+    }
+
+    struct Noop {
+        descriptor: EngineDescriptor,
+    }
+
+    impl Noop {
+        fn new() -> Self {
+            Self {
+                descriptor: EngineDescriptor {
+                    id: "test.noop".into(),
+                    version: "1.0.0".into(),
+                    capabilities: BTreeSet::from([Capability::OcrPage]),
+                    compatibility: vec![EngineCompatibility {
+                        backend: BackendId::new("noop").unwrap(),
+                        devices: BTreeSet::from([DeviceKind::Cpu]),
+                    }],
+                    deterministic: true,
+                    network_use: NetworkUse::None,
+                    max_concurrency: 1,
+                },
+            }
+        }
+    }
+
+    impl Engine for Noop {
+        fn descriptor(&self) -> &EngineDescriptor {
+            &self.descriptor
+        }
+        fn health(&mut self, _request: HealthRequest) -> Result<HealthReport, EngineError> {
+            unreachable!()
+        }
+        fn estimate(
+            &mut self,
+            _request: &EngineRequest,
+            _inventory: &HardwareInventory,
+        ) -> Result<Vec<EngineCandidate>, EngineError> {
+            unreachable!()
+        }
+        fn execute(
+            &mut self,
+            _request: EngineRequest,
+            _context: &ExecutionContext<'_>,
+        ) -> Result<EngineResponse, EngineError> {
+            unreachable!()
+        }
+    }
+
+    #[test]
+    fn duplicate_request_ids_return_protocol_error_without_desynchronizing() {
+        let request_id = RequestId::derive(&[b"duplicate"]);
+        let shutdown_id = RequestId::derive(&[b"shutdown"]);
+        let mut input = Vec::new();
+        write_preamble(&mut input).unwrap();
+        write_frame(
+            &mut input,
+            &ClientHello {
+                versions: SUPPORTED_VERSIONS,
+                maximum_frame_length: 4096,
+            },
+            4096,
+        )
+        .unwrap();
+        for message in [HostMessage::Ping, HostMessage::Ping] {
+            write_frame(
+                &mut input,
+                &RequestEnvelope {
+                    version: CURRENT_PROTOCOL_VERSION,
+                    request_id: request_id.clone(),
+                    message,
+                },
+                4096,
+            )
+            .unwrap();
+        }
+        write_frame(
+            &mut input,
+            &RequestEnvelope {
+                version: CURRENT_PROTOCOL_VERSION,
+                request_id: shutdown_id.clone(),
+                message: HostMessage::Shutdown,
+            },
+            4096,
+        )
+        .unwrap();
+        let mut output = Vec::new();
+        serve(Noop::new(), &mut Cursor::new(input), &mut output).unwrap();
+
+        let mut output = Cursor::new(output);
+        read_preamble(&mut output).unwrap();
+        let _: ServerHello = read_frame(&mut output, 4096).unwrap();
+        let first: ResponseEnvelope = read_frame(&mut output, 4096).unwrap();
+        let duplicate: ResponseEnvelope = read_frame(&mut output, 4096).unwrap();
+        let shutdown: ResponseEnvelope = read_frame(&mut output, 4096).unwrap();
+        assert_eq!(first.message, EngineMessage::Pong);
+        assert!(matches!(
+            duplicate.message,
+            EngineMessage::Error(EngineError {
+                category: EngineErrorCategory::Protocol,
+                ..
+            })
+        ));
+        assert_eq!(shutdown.request_id, shutdown_id);
+        assert_eq!(shutdown.message, EngineMessage::Shutdown);
+    }
+
+    #[test]
+    fn negotiation_error_reports_both_version_ranges() {
+        let mut input = Vec::new();
+        write_preamble(&mut input).unwrap();
+        write_frame(
+            &mut input,
+            &ClientHello {
+                versions: VersionRange {
+                    minimum: ProtocolVersion(9),
+                    maximum: ProtocolVersion(10),
+                },
+                maximum_frame_length: 4096,
+            },
+            4096,
+        )
+        .unwrap();
+        let error = serve(Noop::new(), &mut Cursor::new(input), &mut Vec::new()).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("local 1-1"));
+        assert!(message.contains("peer 9-10"));
     }
 }

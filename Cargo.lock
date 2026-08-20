@@ -484,6 +484,7 @@ dependencies = [
  "ferrodoc-engine-api",
  "schemars",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 

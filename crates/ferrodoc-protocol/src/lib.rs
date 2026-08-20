@@ -338,4 +338,51 @@ mod tests {
             Err(ProtocolError::InvalidPreamble)
         ));
     }
+
+    #[test]
+    fn checked_in_v1_fixtures_have_expected_behavior() {
+        let mut hello = Cursor::new(include_bytes!(
+            "../../../fixtures/protocol/v1/client-hello.bin"
+        ));
+        read_preamble(&mut hello).unwrap();
+        let hello: ClientHello = read_frame(&mut hello, MAX_FRAME_LENGTH).unwrap();
+        assert_eq!(hello.versions, SUPPORTED_VERSIONS);
+
+        let ping: RequestEnvelope = read_frame(
+            &mut Cursor::new(include_bytes!(
+                "../../../fixtures/protocol/v1/ping-request.bin"
+            )),
+            MAX_FRAME_LENGTH,
+        )
+        .unwrap();
+        assert_eq!(ping.message, HostMessage::Ping);
+
+        assert!(matches!(
+            read_frame::<HostMessage>(
+                &mut Cursor::new(include_bytes!(
+                    "../../../fixtures/protocol/v1/malformed-cbor.bin"
+                )),
+                MAX_FRAME_LENGTH
+            ),
+            Err(ProtocolError::MalformedCbor(_))
+        ));
+        assert!(matches!(
+            read_frame::<HostMessage>(
+                &mut Cursor::new(include_bytes!(
+                    "../../../fixtures/protocol/v1/oversized-prefix.bin"
+                )),
+                MAX_FRAME_LENGTH
+            ),
+            Err(ProtocolError::FrameLength { .. })
+        ));
+        assert!(matches!(
+            read_frame::<HostMessage>(
+                &mut Cursor::new(include_bytes!(
+                    "../../../fixtures/protocol/v1/partial-frame.bin"
+                )),
+                MAX_FRAME_LENGTH
+            ),
+            Err(ProtocolError::Io(error)) if error.kind() == io::ErrorKind::UnexpectedEof
+        ));
+    }
 }

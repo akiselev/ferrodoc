@@ -1,0 +1,1522 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ResponseEnvelope",
+  "description": "Response envelope echoing the request ID.",
+  "type": "object",
+  "required": [
+    "message",
+    "request_id",
+    "version"
+  ],
+  "properties": {
+    "message": {
+      "description": "Engine message.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/EngineMessage"
+        }
+      ]
+    },
+    "request_id": {
+      "description": "Correlated request ID.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/RequestId"
+        }
+      ]
+    },
+    "version": {
+      "description": "Negotiated version used for this message.",
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0.0
+    }
+  },
+  "definitions": {
+    "ArtifactId": {
+      "type": "string"
+    },
+    "BackendId": {
+      "type": "string"
+    },
+    "BlobId": {
+      "type": "string"
+    },
+    "Capability": {
+      "description": "A capability an engine can provide.",
+      "oneOf": [
+        {
+          "description": "Open and inspect a document container.",
+          "type": "string",
+          "enum": [
+            "document.open"
+          ]
+        },
+        {
+          "description": "Render a document page.",
+          "type": "string",
+          "enum": [
+            "page.render"
+          ]
+        },
+        {
+          "description": "Extract native text.",
+          "type": "string",
+          "enum": [
+            "text.extract"
+          ]
+        },
+        {
+          "description": "Detect layout regions.",
+          "type": "string",
+          "enum": [
+            "layout.detect"
+          ]
+        },
+        {
+          "description": "Determine reading order.",
+          "type": "string",
+          "enum": [
+            "reading-order.detect"
+          ]
+        },
+        {
+          "description": "OCR a complete page.",
+          "type": "string",
+          "enum": [
+            "ocr.page"
+          ]
+        },
+        {
+          "description": "OCR one region.",
+          "type": "string",
+          "enum": [
+            "ocr.region"
+          ]
+        },
+        {
+          "description": "Recognize a table.",
+          "type": "string",
+          "enum": [
+            "table.recognize"
+          ]
+        },
+        {
+          "description": "Recognize a formula.",
+          "type": "string",
+          "enum": [
+            "formula.recognize"
+          ]
+        },
+        {
+          "description": "Score evidence quality.",
+          "type": "string",
+          "enum": [
+            "quality.score"
+          ]
+        }
+      ]
+    },
+    "CoordinateSpace": {
+      "description": "Coordinate-space identity carried by every rectangle.",
+      "oneOf": [
+        {
+          "description": "PDF user space.",
+          "type": "string",
+          "enum": [
+            "pdf"
+          ]
+        },
+        {
+          "description": "A raster image.",
+          "type": "string",
+          "enum": [
+            "image"
+          ]
+        },
+        {
+          "description": "Page-normalized coordinates in the inclusive range zero through one.",
+          "type": "string",
+          "enum": [
+            "normalized"
+          ]
+        }
+      ]
+    },
+    "CoordinateTransform": {
+      "description": "A finite two-dimensional affine transform `[a, b, c, d, e, f]`.",
+      "type": "array",
+      "items": {
+        "type": "number",
+        "format": "double"
+      },
+      "maxItems": 6,
+      "minItems": 6
+    },
+    "DependencyHealth": {
+      "description": "One dependency readiness item.",
+      "type": "object",
+      "required": [
+        "id",
+        "message",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "description": "Stable dependency identifier.",
+          "type": "string"
+        },
+        "message": {
+          "description": "Redacted diagnostic message.",
+          "type": "string"
+        },
+        "status": {
+          "description": "Readiness status.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/HealthStatus"
+            }
+          ]
+        }
+      }
+    },
+    "DeterministicProvenance": {
+      "description": "Cache-relevant provenance. It intentionally contains no clock time, host, or run ID.",
+      "type": "object",
+      "required": [
+        "engine_id",
+        "engine_version",
+        "input_digest",
+        "parameters",
+        "schema_version",
+        "stage"
+      ],
+      "properties": {
+        "engine_id": {
+          "description": "Stable engine identifier.",
+          "type": "string"
+        },
+        "engine_version": {
+          "description": "Semantic engine version.",
+          "type": "string"
+        },
+        "input_digest": {
+          "description": "Digest of the input artifact.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        },
+        "model_digest": {
+          "description": "Optional model content digest.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parameters": {
+          "description": "Normalized parameters in sorted key order.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "schema_version": {
+          "description": "Persistent schema version.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SchemaVersion"
+            }
+          ]
+        },
+        "stage": {
+          "description": "Producing pipeline stage.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Stage"
+            }
+          ]
+        }
+      }
+    },
+    "DeviceId": {
+      "type": "string"
+    },
+    "DeviceKind": {
+      "description": "A physical device family, separate from inference backend and placement policy.",
+      "oneOf": [
+        {
+          "description": "Host CPU.",
+          "type": "string",
+          "enum": [
+            "cpu"
+          ]
+        },
+        {
+          "description": "NVIDIA CUDA device.",
+          "type": "string",
+          "enum": [
+            "cuda"
+          ]
+        },
+        {
+          "description": "Vulkan compute device.",
+          "type": "string",
+          "enum": [
+            "vulkan"
+          ]
+        },
+        {
+          "description": "Apple Metal device.",
+          "type": "string",
+          "enum": [
+            "metal"
+          ]
+        },
+        {
+          "description": "WebGPU-compatible device.",
+          "type": "string",
+          "enum": [
+            "wgpu"
+          ]
+        }
+      ]
+    },
+    "EngineCandidate": {
+      "description": "One compatible engine candidate and its conservative estimate.",
+      "type": "object",
+      "required": [
+        "backend",
+        "device",
+        "engine_id",
+        "resources"
+      ],
+      "properties": {
+        "backend": {
+          "description": "Selected backend.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BackendId"
+            }
+          ]
+        },
+        "device": {
+          "description": "Selected physical device.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/DeviceId"
+            }
+          ]
+        },
+        "engine_id": {
+          "description": "Engine identifier.",
+          "type": "string"
+        },
+        "resources": {
+          "description": "Resource and quality estimate.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ResourceEstimate"
+            }
+          ]
+        }
+      }
+    },
+    "EngineCompatibility": {
+      "description": "Engine compatibility for one backend across physical device families.",
+      "type": "object",
+      "required": [
+        "backend",
+        "devices"
+      ],
+      "properties": {
+        "backend": {
+          "description": "Inference or implementation backend.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BackendId"
+            }
+          ]
+        },
+        "devices": {
+          "description": "Compatible physical device families.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeviceKind"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "EngineDescriptor": {
+      "description": "Discoverable semantic descriptor for an engine implementation.",
+      "type": "object",
+      "required": [
+        "capabilities",
+        "compatibility",
+        "deterministic",
+        "id",
+        "max_concurrency",
+        "network_use",
+        "version"
+      ],
+      "properties": {
+        "capabilities": {
+          "description": "Capabilities the engine can execute.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Capability"
+          },
+          "uniqueItems": true
+        },
+        "compatibility": {
+          "description": "Compatible backend and device axes.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EngineCompatibility"
+          }
+        },
+        "deterministic": {
+          "description": "Whether identical deterministic inputs are expected to yield identical responses.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Stable lowercase engine identifier.",
+          "type": "string"
+        },
+        "max_concurrency": {
+          "description": "Maximum safe concurrent requests for one instance.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "network_use": {
+          "description": "Declared network behavior.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/NetworkUse"
+            }
+          ]
+        },
+        "version": {
+          "description": "Engine semantic version.",
+          "type": "string"
+        }
+      }
+    },
+    "EngineError": {
+      "description": "Structured engine error with explicit retryability.",
+      "type": "object",
+      "required": [
+        "category",
+        "message",
+        "retryable"
+      ],
+      "properties": {
+        "category": {
+          "description": "Stable category.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EngineErrorCategory"
+            }
+          ]
+        },
+        "message": {
+          "description": "Redacted diagnostic message.",
+          "type": "string"
+        },
+        "retryable": {
+          "description": "Whether retry under the same semantic request may succeed.",
+          "type": "boolean"
+        }
+      }
+    },
+    "EngineErrorCategory": {
+      "description": "Stable engine failure category.",
+      "oneOf": [
+        {
+          "description": "Request violates the semantic contract.",
+          "type": "string",
+          "enum": [
+            "invalid_request"
+          ]
+        },
+        {
+          "description": "Requested operation is not supported.",
+          "type": "string",
+          "enum": [
+            "unsupported"
+          ]
+        },
+        {
+          "description": "Engine is not currently available.",
+          "type": "string",
+          "enum": [
+            "unavailable"
+          ]
+        },
+        {
+          "description": "A dependency is absent or incompatible.",
+          "type": "string",
+          "enum": [
+            "dependency"
+          ]
+        },
+        {
+          "description": "A required model is absent or invalid.",
+          "type": "string",
+          "enum": [
+            "model"
+          ]
+        },
+        {
+          "description": "Resource admission or execution failed.",
+          "type": "string",
+          "enum": [
+            "resource_exhausted"
+          ]
+        },
+        {
+          "description": "Caller cancellation was observed.",
+          "type": "string",
+          "enum": [
+            "cancelled"
+          ]
+        },
+        {
+          "description": "Deadline expired.",
+          "type": "string",
+          "enum": [
+            "deadline_exceeded"
+          ]
+        },
+        {
+          "description": "Process or framing protocol failed.",
+          "type": "string",
+          "enum": [
+            "protocol"
+          ]
+        },
+        {
+          "description": "Unclassified engine failure.",
+          "type": "string",
+          "enum": [
+            "internal"
+          ]
+        }
+      ]
+    },
+    "EngineMessage": {
+      "description": "Engine-to-host semantic message.",
+      "oneOf": [
+        {
+          "description": "Blob registration succeeded.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "$ref": "#/definitions/BlobId"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "blob_registered"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Blob release succeeded.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "$ref": "#/definitions/BlobId"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "blob_released"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Descriptor response.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "$ref": "#/definitions/EngineDescriptor"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "descriptor"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Health response.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "$ref": "#/definitions/HealthReport"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Candidate estimates.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/EngineCandidate"
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "estimate"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Execution response.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "$ref": "#/definitions/EngineResponse"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "execute"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Cancellation acknowledgement for the target request.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "cancelled"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Ping response.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "pong"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Shutdown acknowledgement.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "shutdown"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Structured semantic or transport error.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "$ref": "#/definitions/EngineError"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "error"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "EngineResponse": {
+      "description": "Serializable engine execution response.",
+      "type": "object",
+      "required": [
+        "request_id"
+      ],
+      "properties": {
+        "evidence": {
+          "description": "Evidence records appended by the engine.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Evidence"
+          }
+        },
+        "metadata": {
+          "description": "Deterministic, non-secret response metadata.",
+          "default": {},
+          "type": "object",
+          "additionalProperties": true
+        },
+        "request_id": {
+          "description": "Correlation identity copied from the request.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RequestId"
+            }
+          ]
+        }
+      }
+    },
+    "EstimateConfidence": {
+      "description": "Confidence class for an estimate.",
+      "oneOf": [
+        {
+          "description": "Directly measured for the same artifact and configuration.",
+          "type": "string",
+          "enum": [
+            "measured"
+          ]
+        },
+        {
+          "description": "Derived from a calibrated model or close observation.",
+          "type": "string",
+          "enum": [
+            "calibrated"
+          ]
+        },
+        {
+          "description": "Conservative static upper bound supplied by an engine.",
+          "type": "string",
+          "enum": [
+            "conservative"
+          ]
+        },
+        {
+          "description": "Weak heuristic unsuitable for strict admission by default.",
+          "type": "string",
+          "enum": [
+            "heuristic"
+          ]
+        }
+      ]
+    },
+    "EstimateSource": {
+      "description": "Provenance for a group of resource estimates.",
+      "type": "object",
+      "required": [
+        "confidence",
+        "method"
+      ],
+      "properties": {
+        "confidence": {
+          "description": "Confidence class.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EstimateConfidence"
+            }
+          ]
+        },
+        "method": {
+          "description": "Stable method identifier or short description.",
+          "type": "string"
+        }
+      }
+    },
+    "Estimate_for_EstimateSource": {
+      "description": "A value that is either known or explicitly unknown.",
+      "oneOf": [
+        {
+          "description": "A measured or estimated value is available.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "known"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/EstimateSource"
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Estimate_for_Probability": {
+      "description": "A value that is either known or explicitly unknown.",
+      "oneOf": [
+        {
+          "description": "A measured or estimated value is available.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "known"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/Probability"
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Estimate_for_uint64": {
+      "description": "A value that is either known or explicitly unknown.",
+      "oneOf": [
+        {
+          "description": "A measured or estimated value is available.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "known"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Evidence": {
+      "description": "One hypothesis produced by a source layer or engine.",
+      "type": "object",
+      "required": [
+        "content",
+        "id",
+        "layer_id",
+        "provenance"
+      ],
+      "properties": {
+        "confidence": {
+          "description": "Optional calibrated confidence.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Probability"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content": {
+          "description": "Typed content.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceContent"
+            }
+          ]
+        },
+        "engine_metadata": {
+          "description": "Engine-provided deterministic metadata.",
+          "default": {},
+          "type": "object",
+          "additionalProperties": true
+        },
+        "geometry": {
+          "description": "Optional page geometry.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PageRect"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "description": "Stable evidence identity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceId"
+            }
+          ]
+        },
+        "layer_id": {
+          "description": "Source layer that produced this evidence.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/LayerId"
+            }
+          ]
+        },
+        "provenance": {
+          "description": "Deterministic provenance.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/DeterministicProvenance"
+            }
+          ]
+        }
+      }
+    },
+    "EvidenceContent": {
+      "description": "Typed evidence payload.",
+      "oneOf": [
+        {
+          "description": "Plain or styled text represented as Unicode.",
+          "type": "object",
+          "required": [
+            "kind",
+            "text"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            },
+            "text": {
+              "description": "Extracted text.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "Structured table cells.",
+          "type": "object",
+          "required": [
+            "cells",
+            "columns",
+            "kind",
+            "rows"
+          ],
+          "properties": {
+            "cells": {
+              "description": "Cells with explicit spans.",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/TableCell"
+              }
+            },
+            "columns": {
+              "description": "Column count.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "table"
+              ]
+            },
+            "rows": {
+              "description": "Row count.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "Mathematical formula.",
+          "type": "object",
+          "required": [
+            "kind",
+            "latex"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "formula"
+              ]
+            },
+            "latex": {
+              "description": "Normalized LaTeX source.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "Image reference.",
+          "type": "object",
+          "required": [
+            "artifact",
+            "kind"
+          ],
+          "properties": {
+            "alt": {
+              "description": "Optional alternative text.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "artifact": {
+              "description": "Stable render artifact identity.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/ArtifactId"
+                }
+              ]
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "image"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Forward-compatible payload retained without interpretation.",
+          "type": "object",
+          "required": [
+            "kind",
+            "media_type",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            },
+            "media_type": {
+              "description": "Producer-defined media type.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/MediaType"
+                }
+              ]
+            },
+            "value": {
+              "description": "JSON payload."
+            }
+          }
+        }
+      ]
+    },
+    "EvidenceId": {
+      "type": "string"
+    },
+    "HealthReport": {
+      "description": "Engine health result.",
+      "type": "object",
+      "required": [
+        "message",
+        "status"
+      ],
+      "properties": {
+        "dependencies": {
+          "description": "Dependency-level results.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DependencyHealth"
+          }
+        },
+        "message": {
+          "description": "Redacted summary.",
+          "type": "string"
+        },
+        "status": {
+          "description": "Overall readiness.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/HealthStatus"
+            }
+          ]
+        }
+      }
+    },
+    "HealthStatus": {
+      "description": "Categorized engine health.",
+      "oneOf": [
+        {
+          "description": "Ready for declared operations.",
+          "type": "string",
+          "enum": [
+            "healthy"
+          ]
+        },
+        {
+          "description": "Usable with a documented degradation.",
+          "type": "string",
+          "enum": [
+            "degraded"
+          ]
+        },
+        {
+          "description": "Not currently usable.",
+          "type": "string",
+          "enum": [
+            "unavailable"
+          ]
+        }
+      ]
+    },
+    "LayerId": {
+      "type": "string"
+    },
+    "MediaType": {
+      "type": "string"
+    },
+    "NetworkUse": {
+      "description": "Whether an engine can disclose document data over a network.",
+      "oneOf": [
+        {
+          "description": "Engine never performs network I/O.",
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        },
+        {
+          "description": "Network use is optional and policy-controlled.",
+          "type": "string",
+          "enum": [
+            "optional"
+          ]
+        },
+        {
+          "description": "Engine cannot execute without network access.",
+          "type": "string",
+          "enum": [
+            "required"
+          ]
+        }
+      ]
+    },
+    "PageRect": {
+      "description": "Geometry associated with a zero-based page index and source transform.",
+      "type": "object",
+      "required": [
+        "page_index",
+        "rect",
+        "source_transform"
+      ],
+      "properties": {
+        "page_index": {
+          "description": "Zero-based page index.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "rect": {
+          "description": "Rectangle in its declared coordinate space.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Rect"
+            }
+          ]
+        },
+        "source_transform": {
+          "description": "Transform from the source coordinate system to the rectangle space.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/CoordinateTransform"
+            }
+          ]
+        }
+      }
+    },
+    "Probability": {
+      "description": "A finite probability in the inclusive range zero through one.",
+      "type": "number",
+      "format": "double"
+    },
+    "Rect": {
+      "description": "A finite, nonnegative-size rectangle in an explicit space and unit.",
+      "type": "object",
+      "required": [
+        "height",
+        "space",
+        "unit",
+        "width",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "height": {
+          "type": "number",
+          "format": "double"
+        },
+        "space": {
+          "$ref": "#/definitions/CoordinateSpace"
+        },
+        "unit": {
+          "$ref": "#/definitions/Unit"
+        },
+        "width": {
+          "type": "number",
+          "format": "double"
+        },
+        "x": {
+          "type": "number",
+          "format": "double"
+        },
+        "y": {
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "RequestId": {
+      "type": "string"
+    },
+    "ResourceEstimate": {
+      "description": "Resource estimates for one engine candidate.",
+      "type": "object",
+      "required": [
+        "latency",
+        "peak_ram",
+        "peak_vram",
+        "quality",
+        "remote_cost",
+        "source",
+        "warm_ram",
+        "warm_vram"
+      ],
+      "properties": {
+        "latency": {
+          "description": "Expected execution duration.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "peak_ram": {
+          "description": "Maximum host RAM expected while executing.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "peak_vram": {
+          "description": "Maximum device VRAM expected while executing.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "quality": {
+          "description": "Expected output quality when calibrated.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_Probability"
+            }
+          ]
+        },
+        "remote_cost": {
+          "description": "Expected remote monetary cost.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "source": {
+          "description": "Source and confidence for these values.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_EstimateSource"
+            }
+          ]
+        },
+        "warm_ram": {
+          "description": "Host RAM retained while the engine remains warm.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "warm_vram": {
+          "description": "Device VRAM retained while the engine remains warm.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        }
+      }
+    },
+    "SchemaVersion": {
+      "description": "A semantic schema version. Major changes require migration; minor additions are compatible.",
+      "type": "object",
+      "required": [
+        "major",
+        "minor"
+      ],
+      "properties": {
+        "major": {
+          "description": "Compatibility-breaking version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "minor": {
+          "description": "Backward-compatible additive version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    },
+    "Stage": {
+      "description": "A deterministic pipeline stage.",
+      "oneOf": [
+        {
+          "description": "Input acquisition and hashing.",
+          "type": "string",
+          "enum": [
+            "acquire"
+          ]
+        },
+        {
+          "description": "Document inspection.",
+          "type": "string",
+          "enum": [
+            "inspect"
+          ]
+        },
+        {
+          "description": "Native content extraction.",
+          "type": "string",
+          "enum": [
+            "native_extract"
+          ]
+        },
+        {
+          "description": "Page rasterization.",
+          "type": "string",
+          "enum": [
+            "rasterize"
+          ]
+        },
+        {
+          "description": "Layout analysis.",
+          "type": "string",
+          "enum": [
+            "layout"
+          ]
+        },
+        {
+          "description": "Optical character recognition.",
+          "type": "string",
+          "enum": [
+            "ocr"
+          ]
+        },
+        {
+          "description": "Evidence reconciliation.",
+          "type": "string",
+          "enum": [
+            "reconcile"
+          ]
+        },
+        {
+          "description": "Output rendering.",
+          "type": "string",
+          "enum": [
+            "render"
+          ]
+        }
+      ]
+    },
+    "TableCell": {
+      "description": "A structured table cell.",
+      "type": "object",
+      "required": [
+        "column",
+        "column_span",
+        "row",
+        "row_span",
+        "text"
+      ],
+      "properties": {
+        "column": {
+          "description": "Zero-based column.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "column_span": {
+          "description": "Number of columns occupied.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "row": {
+          "description": "Zero-based row.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "row_span": {
+          "description": "Number of rows occupied.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "text": {
+          "description": "Cell text.",
+          "type": "string"
+        }
+      }
+    },
+    "Unit": {
+      "description": "Unit associated with a coordinate space.",
+      "oneOf": [
+        {
+          "description": "One PDF point, equal to 1/72 inch.",
+          "type": "string",
+          "enum": [
+            "point"
+          ]
+        },
+        {
+          "description": "One raster pixel.",
+          "type": "string",
+          "enum": [
+            "pixel"
+          ]
+        },
+        {
+          "description": "Unitless normalized ratio.",
+          "type": "string",
+          "enum": [
+            "ratio"
+          ]
+        }
+      ]
+    }
+  }
+}
