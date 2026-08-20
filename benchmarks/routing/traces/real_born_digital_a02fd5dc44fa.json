@@ -1,0 +1,359 @@
+{
+  "cache_decisions": [
+    {
+      "decision": "not_configured",
+      "page_index": 0,
+      "stage": "layout.rulebased"
+    }
+  ],
+  "events": [
+    {
+      "code": "document.inspected",
+      "detail": "1 pages accepted by PDF limits",
+      "execution": null,
+      "page_index": null
+    },
+    {
+      "code": "native.quality",
+      "detail": "117 non-whitespace characters; threshold 80",
+      "execution": null,
+      "page_index": 0
+    },
+    {
+      "code": "ocr.rejected",
+      "detail": "native evidence met the quality threshold",
+      "execution": "embedded",
+      "page_index": 0
+    },
+    {
+      "code": "evidence.reconciled",
+      "detail": "3 selected regions",
+      "execution": "embedded",
+      "page_index": 0
+    }
+  ],
+  "leases": [
+    {
+      "device": "cpu",
+      "engine_id": "layout.rulebased",
+      "page_index": 0,
+      "reservation": {
+        "latency": {
+          "status": "known",
+          "value": 10
+        },
+        "peak_ram": {
+          "status": "known",
+          "value": 16777216
+        },
+        "peak_vram": {
+          "status": "known",
+          "value": 0
+        },
+        "quality": {
+          "status": "unknown"
+        },
+        "remote_cost": {
+          "status": "known",
+          "value": 0
+        },
+        "source": {
+          "status": "known",
+          "value": {
+            "confidence": "conservative",
+            "method": "static text segmentation bound"
+          }
+        },
+        "warm_ram": {
+          "status": "known",
+          "value": 1048576
+        },
+        "warm_vram": {
+          "status": "known",
+          "value": 0
+        }
+      },
+      "stage": "layout.rulebased"
+    }
+  ],
+  "measurements": [
+    {
+      "measurement": {
+        "peak_ram": null,
+        "peak_vram": null
+      },
+      "page_index": 0,
+      "stage": "layout.rulebased"
+    }
+  ],
+  "resource_plans": [
+    {
+      "decisions": [
+        {
+          "accepted": true,
+          "input": {
+            "candidate": {
+              "backend": "rules",
+              "device": "cpu",
+              "engine_id": "layout.rulebased",
+              "resources": {
+                "latency": {
+                  "status": "known",
+                  "value": 10
+                },
+                "peak_ram": {
+                  "status": "known",
+                  "value": 16777216
+                },
+                "peak_vram": {
+                  "status": "known",
+                  "value": 0
+                },
+                "quality": {
+                  "status": "unknown"
+                },
+                "remote_cost": {
+                  "status": "known",
+                  "value": 0
+                },
+                "source": {
+                  "status": "known",
+                  "value": {
+                    "confidence": "conservative",
+                    "method": "static text segmentation bound"
+                  }
+                },
+                "warm_ram": {
+                  "status": "known",
+                  "value": 1048576
+                },
+                "warm_vram": {
+                  "status": "known",
+                  "value": 0
+                }
+              }
+            },
+            "descriptor": {
+              "capabilities": [
+                "layout.detect",
+                "reading-order.detect"
+              ],
+              "compatibility": [
+                {
+                  "backend": "rules",
+                  "devices": [
+                    "cpu"
+                  ]
+                }
+              ],
+              "deterministic": true,
+              "id": "layout.rulebased",
+              "max_concurrency": 64,
+              "network_use": "none",
+              "version": "0.2.0"
+            },
+            "model": {
+              "status": "not_required"
+            }
+          },
+          "reasons": [
+            {
+              "code": "accepted",
+              "explanation": "candidate satisfies every hard constraint"
+            }
+          ]
+        }
+      ],
+      "policy": {
+        "allow_unknown_hard_estimates": false,
+        "allowed_engines": [],
+        "capability": "layout.detect",
+        "deadline": null,
+        "max_ram": null,
+        "max_remote_cost": null,
+        "max_vram": null,
+        "offline": false,
+        "placement": {
+          "policy": "auto"
+        },
+        "private": false,
+        "profile": "balanced"
+      },
+      "selected": {
+        "backend": "rules",
+        "device": "cpu",
+        "engine_id": "layout.rulebased",
+        "resources": {
+          "latency": {
+            "status": "known",
+            "value": 10
+          },
+          "peak_ram": {
+            "status": "known",
+            "value": 16777216
+          },
+          "peak_vram": {
+            "status": "known",
+            "value": 0
+          },
+          "quality": {
+            "status": "unknown"
+          },
+          "remote_cost": {
+            "status": "known",
+            "value": 0
+          },
+          "source": {
+            "status": "known",
+            "value": {
+              "confidence": "conservative",
+              "method": "static text segmentation bound"
+            }
+          },
+          "warm_ram": {
+            "status": "known",
+            "value": 1048576
+          },
+          "warm_vram": {
+            "status": "known",
+            "value": 0
+          }
+        }
+      }
+    },
+    {
+      "decisions": [
+        {
+          "accepted": true,
+          "input": {
+            "candidate": {
+              "backend": "tesseract-c-api",
+              "device": "cpu",
+              "engine_id": "ocr.tesseract",
+              "resources": {
+                "latency": {
+                  "status": "unknown"
+                },
+                "peak_ram": {
+                  "status": "known",
+                  "value": 1073741824
+                },
+                "peak_vram": {
+                  "status": "known",
+                  "value": 0
+                },
+                "quality": {
+                  "status": "unknown"
+                },
+                "remote_cost": {
+                  "status": "known",
+                  "value": 0
+                },
+                "source": {
+                  "status": "known",
+                  "value": {
+                    "confidence": "conservative",
+                    "method": "static Tesseract CPU process envelope"
+                  }
+                },
+                "warm_ram": {
+                  "status": "known",
+                  "value": 402653184
+                },
+                "warm_vram": {
+                  "status": "known",
+                  "value": 0
+                }
+              }
+            },
+            "descriptor": {
+              "capabilities": [
+                "ocr.page",
+                "ocr.region"
+              ],
+              "compatibility": [
+                {
+                  "backend": "tesseract-c-api",
+                  "devices": [
+                    "cpu"
+                  ]
+                }
+              ],
+              "deterministic": true,
+              "id": "ocr.tesseract",
+              "max_concurrency": 1,
+              "network_use": "none",
+              "version": "0.2.0"
+            },
+            "model": {
+              "digest": "daa0c97d651c19fba3b25e81317cd697e9908c8208090c94c3905381c23fc047",
+              "id": "model_c7f7d46a0523bfc5b7c945677dbeab8f14695cba935d6941543d9134ed55aa4d",
+              "status": "available"
+            }
+          },
+          "reasons": [
+            {
+              "code": "accepted",
+              "explanation": "candidate satisfies every hard constraint"
+            }
+          ]
+        }
+      ],
+      "policy": {
+        "allow_unknown_hard_estimates": false,
+        "allowed_engines": [],
+        "capability": "ocr.page",
+        "deadline": null,
+        "max_ram": null,
+        "max_remote_cost": null,
+        "max_vram": null,
+        "offline": false,
+        "placement": {
+          "policy": "auto"
+        },
+        "private": false,
+        "profile": "balanced"
+      },
+      "selected": {
+        "backend": "tesseract-c-api",
+        "device": "cpu",
+        "engine_id": "ocr.tesseract",
+        "resources": {
+          "latency": {
+            "status": "unknown"
+          },
+          "peak_ram": {
+            "status": "known",
+            "value": 1073741824
+          },
+          "peak_vram": {
+            "status": "known",
+            "value": 0
+          },
+          "quality": {
+            "status": "unknown"
+          },
+          "remote_cost": {
+            "status": "known",
+            "value": 0
+          },
+          "source": {
+            "status": "known",
+            "value": {
+              "confidence": "conservative",
+              "method": "static Tesseract CPU process envelope"
+            }
+          },
+          "warm_ram": {
+            "status": "known",
+            "value": 402653184
+          },
+          "warm_vram": {
+            "status": "known",
+            "value": 0
+          }
+        }
+      }
+    }
+  ]
+}

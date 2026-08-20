@@ -1,0 +1,364 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RouterModel",
+  "description": "Small, auditable learned router.",
+  "type": "object",
+  "required": [
+    "baselines",
+    "confidence",
+    "dataset_digest",
+    "feature_schema_version",
+    "held_out",
+    "minimum_confidence",
+    "model_version",
+    "native_engine",
+    "native_if_at_least",
+    "objective",
+    "ocr_engine",
+    "qualification",
+    "threshold",
+    "training"
+  ],
+  "properties": {
+    "baselines": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": [
+          {
+            "$ref": "#/definitions/BaselinePolicy"
+          },
+          {
+            "$ref": "#/definitions/RouterEvaluation"
+          }
+        ],
+        "maxItems": 2,
+        "minItems": 2
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "format": "double"
+    },
+    "dataset_digest": {
+      "$ref": "#/definitions/Sha256Digest"
+    },
+    "feature_schema_version": {
+      "type": "string"
+    },
+    "held_out": {
+      "$ref": "#/definitions/RouterEvaluation"
+    },
+    "minimum_confidence": {
+      "type": "number",
+      "format": "double"
+    },
+    "model_version": {
+      "type": "string"
+    },
+    "native_engine": {
+      "type": "string"
+    },
+    "native_if_at_least": {
+      "type": "boolean"
+    },
+    "objective": {
+      "$ref": "#/definitions/TrainingObjective"
+    },
+    "ocr_engine": {
+      "type": "string"
+    },
+    "qualification": {
+      "$ref": "#/definitions/Qualification"
+    },
+    "threshold": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "training": {
+      "$ref": "#/definitions/RouterEvaluation"
+    }
+  },
+  "definitions": {
+    "BaselinePolicy": {
+      "description": "Deterministic non-learned policy.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "always_native"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "minimum_characters"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "native_threshold"
+              ]
+            },
+            "minimum_characters": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "minimum_characters"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "page_type_rules"
+              ]
+            },
+            "minimum_characters": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "profile"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "profile_specific"
+              ]
+            },
+            "profile": {
+              "$ref": "#/definitions/Profile"
+            }
+          }
+        }
+      ]
+    },
+    "Partition": {
+      "description": "Non-overlapping corpus partition.",
+      "oneOf": [
+        {
+          "description": "Training or broad exploratory cases.",
+          "type": "string",
+          "enum": [
+            "train"
+          ]
+        },
+        {
+          "description": "Development-time parameter selection cases.",
+          "type": "string",
+          "enum": [
+            "tuning"
+          ]
+        },
+        {
+          "description": "Sealed evaluation cases not used for optimization.",
+          "type": "string",
+          "enum": [
+            "held_out"
+          ]
+        },
+        {
+          "description": "Purpose-built deterministic regression cases.",
+          "type": "string",
+          "enum": [
+            "regression"
+          ]
+        }
+      ]
+    },
+    "Profile": {
+      "description": "A built-in planning profile name.",
+      "oneOf": [
+        {
+          "description": "Prefer minimum latency.",
+          "type": "string",
+          "enum": [
+            "fast"
+          ]
+        },
+        {
+          "description": "Balance quality and resource use.",
+          "type": "string",
+          "enum": [
+            "balanced"
+          ]
+        },
+        {
+          "description": "Prefer quality.",
+          "type": "string",
+          "enum": [
+            "accurate"
+          ]
+        },
+        {
+          "description": "Restrict work to CPU devices.",
+          "type": "string",
+          "enum": [
+            "cpu"
+          ]
+        },
+        {
+          "description": "Enforce a small explicit VRAM budget.",
+          "type": "string",
+          "enum": [
+            "low-vram"
+          ]
+        },
+        {
+          "description": "Reject network-dependent candidates.",
+          "type": "string",
+          "enum": [
+            "offline"
+          ]
+        },
+        {
+          "description": "Reject candidates that disclose document content.",
+          "type": "string",
+          "enum": [
+            "private"
+          ]
+        },
+        {
+          "description": "Prefer minimum monetary cost.",
+          "type": "string",
+          "enum": [
+            "cheap"
+          ]
+        }
+      ]
+    },
+    "Qualification": {
+      "description": "Qualification state prevents an unproven model from being used.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "qualified"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "status"
+          ],
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "rejected"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "RouterEvaluation": {
+      "type": "object",
+      "required": [
+        "case_ids",
+        "failure_rate",
+        "mean_quality",
+        "objective",
+        "partition"
+      ],
+      "properties": {
+        "case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failure_rate": {
+          "type": "number",
+          "format": "double"
+        },
+        "mean_latency_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "mean_quality": {
+          "type": "number",
+          "format": "double"
+        },
+        "objective": {
+          "type": "number",
+          "format": "double"
+        },
+        "partition": {
+          "$ref": "#/definitions/Partition"
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    },
+    "TrainingObjective": {
+      "description": "Objective declared before training. Scalarization is only an admission check; separate quality/latency/failure values remain in every evaluation.",
+      "type": "object",
+      "required": [
+        "failure_penalty",
+        "latency_penalty_per_second",
+        "minimum_confidence",
+        "minimum_improvement"
+      ],
+      "properties": {
+        "failure_penalty": {
+          "type": "number",
+          "format": "double"
+        },
+        "latency_penalty_per_second": {
+          "type": "number",
+          "format": "double"
+        },
+        "minimum_confidence": {
+          "type": "number",
+          "format": "double"
+        },
+        "minimum_improvement": {
+          "type": "number",
+          "format": "double"
+        }
+      }
+    }
+  }
+}

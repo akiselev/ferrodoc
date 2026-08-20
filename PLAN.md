@@ -993,8 +993,8 @@ Every phase PR updates this table. Use only: `planned`, `in progress`, `blocked`
 | 3 — process protocol | complete | local merge | `9e2d3f8` | full gates and mock/layout/OCRS process parity passed; merged as `58137d5`; see `docs/phase-3-pr.md` |
 | 4 — resource runtime | complete | local merge | `58137d5` | 113 tests, real-model store/doctor/cache checks, offline smoke, and Lightbulb resource regressions passed; merged as `b9e1bcf`; see `docs/phase-4-pr.md` |
 | 5 — trustworthy benchmarks | complete | local merge | `b9e1bcf` | 125 tests, synthetic/real integrity smokes, schema/corpus regeneration, and Lightbulb conversion passed; merged as `8b9fc923`; see `docs/phase-5-pr.md` |
-| 6 — qualified engines | in progress | — | `8b9fc923` | engine conformance, optional native integration, packaging, and fixed-corpus qualification started |
-| 7 — routing and research | planned | — | — | — |
+| 6 — qualified engines | complete | local merge | `8b9fc923` | 138 tests, common conformance, fixed-corpus qualification, optional-native isolation, and Lightbulb engine smoke passed; merged as `f02c265`; see `docs/phase-6-pr.md` |
+| 7 — routing and research | in progress | — | `f02c265` | deterministic routing baselines, trace-derived examples, and immutable experiment ledger started |
 | 8 — release v0.2 | planned | — | — | — |
 
 A phase is `complete` only after its PR is merged and all acceptance criteria have evidence. Opening a PR does not make a phase complete.

@@ -4,9 +4,11 @@ Ferrodoc is a pre-release Rust project for offline, evidence-preserving document
 
 ## Current status
 
-Repository recovery through the Phase 6 qualified engine portfolio is implemented, including the Phase 5 foundry and integrity-first benchmark loop. Born-digital PDFs convert without models. Scanned and hybrid PDFs use the pure-Rust OCRS engine when an explicit verified model pair is supplied. Engines can run embedded or over the bounded process protocol; conversion applies explainable hard constraints, scheduler leases, and an optional deterministic stage cache.
+Repository recovery through the Phase 7 routing and research loop is implemented, including the qualified engine portfolio, foundry, and integrity-first benchmark loop. Born-digital PDFs convert without models. Scanned and hybrid PDFs use the pure-Rust OCRS engine when an explicit verified model pair is supplied. Engines can run embedded or over the bounded process protocol; conversion applies explainable hard constraints, scheduler leases, and an optional deterministic stage cache.
 
 Phase 6 qualifies the native PDF, rule-based layout, OCRS, deterministic mock, optional Tesseract C-API, and experimental no-shell command boundaries. The default `cpu-minimal` and `process-engines` features remain pure Rust and network-free. See the [qualified engine portfolio](docs/engines/README.md).
+
+Phase 7 adds digest-bound routing examples, deterministic baselines, guarded learned recommendations, and an immutable experiment ledger. The fixed routing calibration is intentionally negative: its stump does not beat the deterministic held-out baseline and is therefore rejected rather than enabled. See [routing and research](docs/research.md).
 
 The implementation sequence and acceptance gates are defined in [PLAN.md](PLAN.md). Current work is summarized in [STATUS.md](STATUS.md), and the discarded source payload is documented in [docs/recovery-inventory.md](docs/recovery-inventory.md).
 
@@ -27,6 +29,7 @@ cargo test --workspace --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 ./scripts/smoke.sh
 ./scripts/benchmark-smoke.sh
+./scripts/routing-smoke.sh
 ```
 
 ## Quick start
@@ -40,6 +43,7 @@ cargo run --locked -p ferrodoc -- explain fixtures/pdf/born-digital.pdf
 cargo run --locked -p ferrodoc -- hardware
 cargo run --locked -p ferrodoc -- plugins doctor
 cargo run --locked -p ferrodoc -- models list --store .ferrodoc/models
+cargo run --locked -p ferrodoc -- router inspect . benchmarks/routing/dataset.json
 ```
 
 `convert` defaults to Markdown; `--format html` and `--format json` select semantic HTML or the complete evidence graph. Output files are committed with a temporary file and atomic rename. Malformed, encrypted, missing, unsupported, and unavailable-model failures use nonzero exit status and a JSON error envelope on stderr.
@@ -49,6 +53,8 @@ Ferrodoc never downloads models during build or conversion. The checked-in [OCRS
 `plan` accepts profiles plus hard `--max-ram`, `--max-vram`, `--max-cost-microusd`, and `--deadline-ms` constraints. Unknown values fail hard limits unless `--allow-unknown-estimates` explicitly requests guarded execution. `--cache-dir DIR` enables atomic stage caching from input, model, engine, schema, page, seed, and normalized-parameter identity.
 
 The deterministic foundry, real regression corpus, evaluator contracts, metrics, measurement evidence, held-out rules, and Pareto comparison workflow are described in [Benchmarking and corpus governance](docs/benchmarking.md). The default benchmark smoke is offline and explicitly verifies that missing work scores as failure rather than success.
+
+The router and experiment commands are offline. `router train` writes a model only after re-hashing every conversion trace and benchmark report; its qualification field remains `rejected` unless it beats all declared deterministic baselines on identical held-out cases. `research run` reads immutable reports, re-hashes protected truth and evaluator files before and after scoring, observes cumulative budgets, and atomically writes resumable ledger state.
 
 Optional Tesseract is selected explicitly and discovered at runtime; the default binary never links a native OCR library:
 

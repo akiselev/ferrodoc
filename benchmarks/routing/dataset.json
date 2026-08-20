@@ -1,0 +1,115 @@
+{
+  "dataset_version": "ferrodoc-routing-dataset/1",
+  "feature_schema_version": "ferrodoc-routing-features/1",
+  "corpus_digest": "9ca75658e0db622584320467b7cc312cff9f4409c2909d62c0a78df7fcd4f6d5",
+  "records": [
+    {
+      "case_id": "real_born_digital_a02fd5dc44fa",
+      "document_digest": "025471e0be97d33c8814070cd2c5fe675b2145c9e58f51d5802676495c221a9c",
+      "family_id": "a02fd5dc44fae299385be21c2af80d9ac2e6897654fe4ac45692270ccf757efa",
+      "partition": "train",
+      "conversion_trace": {
+        "path": "benchmarks/routing/traces/real_born_digital_a02fd5dc44fa.json",
+        "digest": "dbd0ca6690fa6fc11864a9effb9f7992f40fc8b32249394b82c2a4f2c6376878"
+      },
+      "features": {
+        "page_count": {
+          "status": "observed",
+          "value": 1
+        },
+        "native_characters": {
+          "status": "observed",
+          "value": 117
+        },
+        "image_coverage": {
+          "status": "missing",
+          "reason": "the current conversion trace does not observe image coverage"
+        },
+        "scanned_likelihood": {
+          "status": "observed",
+          "value": 0.0
+        }
+      },
+      "outcomes": [
+        {
+          "engine_id": "portfolio.ocrs",
+          "route": "native",
+          "benchmark_report": {
+            "path": "benchmarks/routing/reports/native.json",
+            "digest": "f73806768e5cbb03d1c63e827b92842321c9bd8da746682029ea3f0f3d55e6da"
+          },
+          "case_id": "real_born_digital_a02fd5dc44fa",
+          "quality": 0.3333333333333333,
+          "failed": false,
+          "cold_wall_ms": 17.621099
+        },
+        {
+          "engine_id": "portfolio.tesseract",
+          "route": "ocr",
+          "benchmark_report": {
+            "path": "benchmarks/routing/reports/tesseract.json",
+            "digest": "e362884aadaa0b8b10663429f01a5257f3ddfb627b94edde001afa6c2303fae3"
+          },
+          "case_id": "real_born_digital_a02fd5dc44fa",
+          "quality": 0.3333333333333333,
+          "failed": false,
+          "cold_wall_ms": 1932.593996
+        }
+      ]
+    },
+    {
+      "case_id": "real_image_only_b9236636ec15",
+      "document_digest": "b58e7fb3c8024c76fde913ff004444002250938242286e6147a83d6eefd9e071",
+      "family_id": "b9236636ec15a34390cbf1cf31dc3dd1bb52623029df5ba0a766c60cfec3844e",
+      "partition": "held_out",
+      "conversion_trace": {
+        "path": "benchmarks/routing/traces/real_image_only_b9236636ec15.json",
+        "digest": "173d4ad274889707e03c745c6743cf2e52b3332230211d9a7e2549973e2e8f11"
+      },
+      "features": {
+        "page_count": {
+          "status": "observed",
+          "value": 1
+        },
+        "native_characters": {
+          "status": "observed",
+          "value": 0
+        },
+        "image_coverage": {
+          "status": "missing",
+          "reason": "the current conversion trace does not observe image coverage"
+        },
+        "scanned_likelihood": {
+          "status": "observed",
+          "value": 1.0
+        }
+      },
+      "outcomes": [
+        {
+          "engine_id": "portfolio.ocrs",
+          "route": "native",
+          "benchmark_report": {
+            "path": "benchmarks/routing/reports/native.json",
+            "digest": "f73806768e5cbb03d1c63e827b92842321c9bd8da746682029ea3f0f3d55e6da"
+          },
+          "case_id": "real_image_only_b9236636ec15",
+          "quality": 0.0,
+          "failed": true,
+          "cold_wall_ms": 18.2437
+        },
+        {
+          "engine_id": "portfolio.tesseract",
+          "route": "ocr",
+          "benchmark_report": {
+            "path": "benchmarks/routing/reports/tesseract.json",
+            "digest": "e362884aadaa0b8b10663429f01a5257f3ddfb627b94edde001afa6c2303fae3"
+          },
+          "case_id": "real_image_only_b9236636ec15",
+          "quality": 0.3333333333333333,
+          "failed": false,
+          "cold_wall_ms": 7330.823544
+        }
+      ]
+    }
+  ]
+}

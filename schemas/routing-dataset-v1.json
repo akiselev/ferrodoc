@@ -1,0 +1,335 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RoutingDataset",
+  "description": "Complete traceable routing dataset.",
+  "type": "object",
+  "required": [
+    "corpus_digest",
+    "dataset_version",
+    "feature_schema_version",
+    "records"
+  ],
+  "properties": {
+    "corpus_digest": {
+      "$ref": "#/definitions/Sha256Digest"
+    },
+    "dataset_version": {
+      "type": "string"
+    },
+    "feature_schema_version": {
+      "type": "string"
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/RoutingRecord"
+      }
+    }
+  },
+  "definitions": {
+    "ArtifactSource": {
+      "description": "Digest-bound file from which one routing observation was derived.",
+      "type": "object",
+      "required": [
+        "digest",
+        "path"
+      ],
+      "properties": {
+        "digest": {
+          "description": "Exact bytes consumed.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        },
+        "path": {
+          "description": "Repository- or run-root-relative path.",
+          "type": "string"
+        }
+      }
+    },
+    "FeatureValue_for_double": {
+      "description": "An observed feature or a visible reason it is unavailable.",
+      "oneOf": [
+        {
+          "description": "Value observed before routing.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "observed"
+              ]
+            },
+            "value": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        },
+        {
+          "description": "Value was unavailable; it must not be silently imputed.",
+          "type": "object",
+          "required": [
+            "reason",
+            "status"
+          ],
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "missing"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "FeatureValue_for_uint32": {
+      "description": "An observed feature or a visible reason it is unavailable.",
+      "oneOf": [
+        {
+          "description": "Value observed before routing.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "observed"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "Value was unavailable; it must not be silently imputed.",
+          "type": "object",
+          "required": [
+            "reason",
+            "status"
+          ],
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "missing"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "FeatureValue_for_uint64": {
+      "description": "An observed feature or a visible reason it is unavailable.",
+      "oneOf": [
+        {
+          "description": "Value observed before routing.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "observed"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "Value was unavailable; it must not be silently imputed.",
+          "type": "object",
+          "required": [
+            "reason",
+            "status"
+          ],
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "missing"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Partition": {
+      "description": "Non-overlapping corpus partition.",
+      "oneOf": [
+        {
+          "description": "Training or broad exploratory cases.",
+          "type": "string",
+          "enum": [
+            "train"
+          ]
+        },
+        {
+          "description": "Development-time parameter selection cases.",
+          "type": "string",
+          "enum": [
+            "tuning"
+          ]
+        },
+        {
+          "description": "Sealed evaluation cases not used for optimization.",
+          "type": "string",
+          "enum": [
+            "held_out"
+          ]
+        },
+        {
+          "description": "Purpose-built deterministic regression cases.",
+          "type": "string",
+          "enum": [
+            "regression"
+          ]
+        }
+      ]
+    },
+    "RouteClass": {
+      "description": "Coarse semantic route selected before a concrete engine.",
+      "type": "string",
+      "enum": [
+        "native",
+        "ocr"
+      ]
+    },
+    "RouteOutcome": {
+      "description": "Historical candidate result copied from a benchmark case.",
+      "type": "object",
+      "required": [
+        "benchmark_report",
+        "case_id",
+        "engine_id",
+        "failed",
+        "quality",
+        "route"
+      ],
+      "properties": {
+        "benchmark_report": {
+          "$ref": "#/definitions/ArtifactSource"
+        },
+        "case_id": {
+          "type": "string"
+        },
+        "cold_wall_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "engine_id": {
+          "type": "string"
+        },
+        "failed": {
+          "type": "boolean"
+        },
+        "quality": {
+          "type": "number",
+          "format": "double"
+        },
+        "route": {
+          "$ref": "#/definitions/RouteClass"
+        }
+      }
+    },
+    "RoutingFeatures": {
+      "description": "Stable pre-execution features. No truth or post-execution metric is admitted.",
+      "type": "object",
+      "required": [
+        "image_coverage",
+        "native_characters",
+        "page_count",
+        "scanned_likelihood"
+      ],
+      "properties": {
+        "image_coverage": {
+          "$ref": "#/definitions/FeatureValue_for_double"
+        },
+        "native_characters": {
+          "$ref": "#/definitions/FeatureValue_for_uint64"
+        },
+        "page_count": {
+          "$ref": "#/definitions/FeatureValue_for_uint32"
+        },
+        "scanned_likelihood": {
+          "$ref": "#/definitions/FeatureValue_for_double"
+        }
+      }
+    },
+    "RoutingRecord": {
+      "description": "One trace-derived training/evaluation example.",
+      "type": "object",
+      "required": [
+        "case_id",
+        "conversion_trace",
+        "document_digest",
+        "family_id",
+        "features",
+        "outcomes",
+        "partition"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string"
+        },
+        "conversion_trace": {
+          "$ref": "#/definitions/ArtifactSource"
+        },
+        "document_digest": {
+          "$ref": "#/definitions/Sha256Digest"
+        },
+        "family_id": {
+          "description": "Related synthetic degradations share this identity and must share a partition.",
+          "type": "string"
+        },
+        "features": {
+          "$ref": "#/definitions/RoutingFeatures"
+        },
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RouteOutcome"
+          }
+        },
+        "partition": {
+          "$ref": "#/definitions/Partition"
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    }
+  }
+}

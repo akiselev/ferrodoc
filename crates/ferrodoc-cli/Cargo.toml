@@ -26,6 +26,8 @@ ferrodoc-engine-tesseract = { path = "../../engines/ferrodoc-engine-tesseract", 
 ferrodoc-layout-rulebased = { path = "../../engines/ferrodoc-layout-rulebased" }
 ferrodoc-pdf = { path = "../ferrodoc-pdf" }
 ferrodoc-render = { path = "../ferrodoc-render" }
+ferrodoc-research = { path = "../ferrodoc-research" }
+ferrodoc-router = { path = "../ferrodoc-router" }
 ferrodoc-runtime = { path = "../ferrodoc-runtime" }
 serde.workspace = true
 serde_json.workspace = true

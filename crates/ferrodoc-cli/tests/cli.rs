@@ -29,8 +29,58 @@ fn reports_truthful_phase_status() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "Ferrodoc Phase 6 qualified engine runtime\n"
+        "Ferrodoc Phase 7 guarded routing runtime\n"
     );
+}
+
+#[test]
+fn router_commands_verify_sources_and_retain_a_negative_result() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dataset = root.join("benchmarks/routing/dataset.json");
+    let directory = tempfile::tempdir().unwrap();
+    let model = directory.path().join("model.json");
+    let inspect = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+        .arg("router")
+        .arg("inspect")
+        .arg(&root)
+        .arg(&dataset)
+        .output()
+        .unwrap();
+    assert!(
+        inspect.status.success(),
+        "{}",
+        String::from_utf8_lossy(&inspect.stderr)
+    );
+    let inspected: serde_json::Value = serde_json::from_slice(&inspect.stdout).unwrap();
+    assert_eq!(inspected["source_verification"], "passed");
+
+    let train = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+        .arg("router")
+        .arg("train")
+        .arg(&root)
+        .arg(&dataset)
+        .arg(&model)
+        .output()
+        .unwrap();
+    assert!(
+        train.status.success(),
+        "{}",
+        String::from_utf8_lossy(&train.stderr)
+    );
+    let trained: serde_json::Value = serde_json::from_slice(&fs::read(&model).unwrap()).unwrap();
+    assert_eq!(trained["qualification"]["status"], "rejected");
+
+    let comparison = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+        .arg("router")
+        .arg("compare")
+        .arg(&root)
+        .arg(&dataset)
+        .arg(&model)
+        .output()
+        .unwrap();
+    assert!(comparison.status.success());
+    let comparison: serde_json::Value = serde_json::from_slice(&comparison.stdout).unwrap();
+    assert_eq!(comparison["identical_case_sets"], true);
 }
 
 #[cfg(feature = "tesseract")]

@@ -1,0 +1,91 @@
+{
+  "spec_version": "ferrodoc-experiment-spec/1",
+  "experiment_id": "phase-7-fixed-routing-comparison",
+  "code_digest": "7baba37c865aac6e2736d05c6a17e0d7d790bbc62c3fe3657ccd0d50005a54cb",
+  "model_digest": "53b1b9cefdc4581024e304edf58de41f81ffd3182e2c05f7b2174ea2456ec7a3",
+  "corpus_digest": "9ca75658e0db622584320467b7cc312cff9f4409c2909d62c0a78df7fcd4f6d5",
+  "evaluator_digest": "1321379e53bf1321015c4910065d4e7dc673eb8d7425a5131fed9042d5a6ff9a",
+  "comparison_policy": {
+    "required": [
+      "quality",
+      "latency",
+      "ram",
+      "failure_rate"
+    ],
+    "tolerances": {}
+  },
+  "budget": {
+    "maximum_evaluations": 2,
+    "maximum_runner_wall_ms": 30000
+  },
+  "protected": [
+    {
+      "path": "benchmarks/real-regression/manifest.json",
+      "digest": "1a4abfe243096ef24a8e9d992c81bc2d8c5b56a776a6f45c70afb450ee56528b",
+      "role": "benchmark_truth"
+    },
+    {
+      "path": "tools/ferrodoc-bench/src/lib.rs",
+      "digest": "1321379e53bf1321015c4910065d4e7dc673eb8d7425a5131fed9042d5a6ff9a",
+      "role": "metric_code"
+    }
+  ],
+  "trials": [
+    {
+      "kind": "mutation",
+      "id": "router-stump-training",
+      "command": {
+        "argv": [
+          "ferrodoc",
+          "router",
+          "train",
+          ".",
+          "benchmarks/routing/dataset.json",
+          "router-model.json"
+        ],
+        "environment": {
+          "NETWORK_POLICY": "offline",
+          "RUST_TOOLCHAIN": "1.95.0"
+        },
+        "working_directory_digest": "7baba37c865aac6e2736d05c6a17e0d7d790bbc62c3fe3657ccd0d50005a54cb"
+      },
+      "output_digest": "53b1b9cefdc4581024e304edf58de41f81ffd3182e2c05f7b2174ea2456ec7a3"
+    },
+    {
+      "kind": "evaluation",
+      "id": "native-baseline",
+      "command": {
+        "argv": [
+          "ferrodoc-bench",
+          "verify-report",
+          "benchmarks/routing/reports/native.json"
+        ],
+        "environment": {
+          "NETWORK_POLICY": "offline",
+          "RUST_TOOLCHAIN": "1.95.0"
+        },
+        "working_directory_digest": "7baba37c865aac6e2736d05c6a17e0d7d790bbc62c3fe3657ccd0d50005a54cb"
+      },
+      "raw_report": "benchmarks/routing/reports/native.json",
+      "raw_report_digest": "f73806768e5cbb03d1c63e827b92842321c9bd8da746682029ea3f0f3d55e6da"
+    },
+    {
+      "kind": "evaluation",
+      "id": "tesseract-route",
+      "command": {
+        "argv": [
+          "ferrodoc-bench",
+          "verify-report",
+          "benchmarks/routing/reports/tesseract.json"
+        ],
+        "environment": {
+          "NETWORK_POLICY": "offline",
+          "RUST_TOOLCHAIN": "1.95.0"
+        },
+        "working_directory_digest": "7baba37c865aac6e2736d05c6a17e0d7d790bbc62c3fe3657ccd0d50005a54cb"
+      },
+      "raw_report": "benchmarks/routing/reports/tesseract.json",
+      "raw_report_digest": "e362884aadaa0b8b10663429f01a5257f3ddfb627b94edde001afa6c2303fae3"
+    }
+  ]
+}

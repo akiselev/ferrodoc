@@ -408,6 +408,8 @@ dependencies = [
  "ferrodoc-layout-rulebased",
  "ferrodoc-pdf",
  "ferrodoc-render",
+ "ferrodoc-research",
+ "ferrodoc-router",
  "ferrodoc-runtime",
  "serde",
  "serde_json",
@@ -591,6 +593,33 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "ferrodoc-research"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-bench",
+ "ferrodoc-core",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "ferrodoc-router"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-bench",
+ "ferrodoc-core",
+ "ferrodoc-foundry",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
  "thiserror 2.0.20",
 ]
 
