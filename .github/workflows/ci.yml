@@ -23,8 +23,26 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo run --locked -p ferrodoc-ir --example export_snapshots
       - run: cargo run --locked -p ferrodoc-pdf --example generate_fixtures
+      - run: cargo run --locked -p ferrodoc-protocol --example export_fixtures
       - run: ./scripts/smoke.sh
       - run: git diff --exit-code
+
+  process-protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked -p ferrodoc-engine-mock --test process
+      - name: Test layout embedded/process parity
+        run: |
+          cargo build --locked -p ferrodoc-layout-rulebased --bin ferrodoc-layout-rulebased
+          target_dir=$(cargo metadata --locked --format-version 1 --no-deps | jq -r .target_directory)
+          FERRODOC_TEST_LAYOUT_BINARY="$target_dir/debug/ferrodoc-layout-rulebased" \
+            cargo test --locked -p ferrodoc-runtime --test process_engines \
+              layout_wrapper_matches_embedded_when_binary_is_provided -- --exact
 
   vertical-slice-ocrs:
     runs-on: ubuntu-latest
@@ -49,3 +67,12 @@ jobs:
         env:
           FERRODOC_TEST_OCRS_MODEL_DIR: ${{ runner.temp }}/ocrs-models
         run: cargo test --locked -p ferrodoc --test cli model_backed_scan_and_hybrid_when_models_are_provided -- --exact
+      - name: Test OCRS embedded/process parity
+        env:
+          FERRODOC_TEST_OCRS_MODEL_DIR: ${{ runner.temp }}/ocrs-models
+        run: |
+          cargo build --locked -p ferrodoc-engine-ocrs --bin ferrodoc-engine-ocrs
+          target_dir=$(cargo metadata --locked --format-version 1 --no-deps | jq -r .target_directory)
+          FERRODOC_TEST_OCRS_BINARY="$target_dir/debug/ferrodoc-engine-ocrs" \
+            cargo test --locked -p ferrodoc-runtime --test process_engines \
+              ocrs_wrapper_matches_embedded_when_binary_and_models_are_provided -- --exact
