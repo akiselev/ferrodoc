@@ -1,0 +1,13 @@
+[package]
+name = "ferrodoc-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ferrodoc-engine-api = { path = "../ferrodoc-engine-api" }
+thiserror.workspace = true
+
+[dev-dependencies]
+ferrodoc-core = { path = "../ferrodoc-core" }
