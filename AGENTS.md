@@ -15,8 +15,16 @@ This file is the short operational contract for coding agents working on the rep
 
 ## Current orientation
 
-- Implemented runtime-agnostic baseline types: `crates/ferrodoc-core`
+- Validated primitives and manifests: `crates/ferrodoc-core`
+- Document semantics: `crates/ferrodoc-ir`
+- Engine semantics: `crates/ferrodoc-engine-api`
+- Process schemas: `crates/ferrodoc-protocol`
+- Runtime composition: `crates/ferrodoc-runtime`
+- PDF boundary: `crates/ferrodoc-pdf`
+- Deterministic output: `crates/ferrodoc-render`
+- User surface: `crates/ferrodoc-cli`
 - Recovery evidence: `docs/recovery-inventory.md`
+- Architecture and IR contracts: `docs/architecture.md`, `docs/ir.md`
 - Implementation order and future paths: `PLAN.md`
 - Short current state: `STATUS.md`
 
@@ -35,6 +43,7 @@ Implement the transport-independent `Engine` contract, declare honest capabiliti
 ```bash
 cargo metadata --locked --format-version 1 > /dev/null
 ./scripts/check-workspace.sh
+./scripts/check-boundaries.sh
 cargo fmt --all -- --check
 cargo check --workspace --all-targets --locked
 cargo test --workspace --locked

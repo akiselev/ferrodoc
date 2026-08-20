@@ -4,7 +4,7 @@ Ferrodoc is a pre-release Rust project for evidence-preserving document extracti
 
 ## Current status
 
-Repository recovery is complete enough to provide a truthful build baseline. The workspace currently contains only `ferrodoc-core`, the recovered runtime-agnostic types from the original import. There is no usable CLI, PDF converter, OCR engine, plugin transport, model store, foundry, or benchmark runner yet.
+Repository recovery and the Phase 1 foundations are implemented. The workspace contains validated core primitives, a versioned evidence IR, a transport-independent engine API, process-protocol schema types, and explicit runtime/PDF/render/CLI skeletons. There is not yet a PDF converter, OCR engine, process transport, model store, foundry, or benchmark runner.
 
 The implementation sequence and acceptance gates are defined in [PLAN.md](PLAN.md). Current work is summarized in [STATUS.md](STATUS.md), and the discarded source payload is documented in [docs/recovery-inventory.md](docs/recovery-inventory.md).
 
@@ -18,6 +18,7 @@ The implementation sequence and acceptance gates are defined in [PLAN.md](PLAN.m
 ```bash
 cargo metadata --locked --format-version 1 > /dev/null
 ./scripts/check-workspace.sh
+./scripts/check-boundaries.sh
 cargo fmt --all -- --check
 cargo check --workspace --all-targets --locked
 cargo test --workspace --locked
@@ -25,7 +26,14 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 ./scripts/smoke.sh
 ```
 
-These are the only supported operational commands at this phase. The future CLI and engine portfolio remain planned work.
+The CLI currently exposes only truthful foundation status:
+
+```bash
+cargo run --locked -p ferrodoc -- --version
+cargo run --locked -p ferrodoc -- status
+```
+
+PDF commands and the engine portfolio remain planned work.
 
 ## Design invariants
 
