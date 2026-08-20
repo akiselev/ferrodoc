@@ -411,6 +411,7 @@ dependencies = [
  "ferrodoc-research",
  "ferrodoc-router",
  "ferrodoc-runtime",
+ "schemars",
  "serde",
  "serde_json",
  "tempfile",

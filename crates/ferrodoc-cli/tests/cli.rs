@@ -199,6 +199,7 @@ fn malformed_and_missing_inputs_have_structured_errors() {
         .unwrap();
     assert_eq!(malformed.status.code(), Some(2));
     let error: serde_json::Value = serde_json::from_slice(&malformed.stderr).unwrap();
+    assert_eq!(error["schema_version"], "ferrodoc-cli-error/1");
     assert_eq!(error["error"]["category"], "malformed_pdf");
 
     let missing = run(&["inspect", "/definitely/missing/ferrodoc.pdf"]);

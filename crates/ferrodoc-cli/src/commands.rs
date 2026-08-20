@@ -115,17 +115,10 @@ pub fn run(command: Command) -> Result<(), CommandError> {
             let pipeline = converter.plan(&bytes)?;
             let inventory = ferrodoc_runtime::hardware::inventory();
             let resource_plans = converter.resource_plans(&inventory)?;
-            #[derive(Serialize)]
-            struct PlanOutput<'a> {
-                #[serde(flatten)]
-                pipeline: &'a ferrodoc_runtime::ConversionPlan,
-                inventory: &'a ferrodoc_engine_api::HardwareInventory,
-                resource_plans: &'a [ferrodoc_runtime::planner::PlanningReport],
-            }
-            print_json(&PlanOutput {
-                pipeline: &pipeline,
-                inventory: &inventory,
-                resource_plans: &resource_plans,
+            print_json(&ferrodoc::PlanOutput {
+                pipeline,
+                inventory,
+                resource_plans,
             })?;
         }
         Command::Explain(arguments) => {

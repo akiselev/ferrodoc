@@ -63,6 +63,8 @@ fn doctor() -> Result<(), String> {
         "schemas/router-model-v1.json",
         "schemas/experiment-spec-v1.json",
         "schemas/experiment-ledger-v1.json",
+        "schemas/cli-error-v1.json",
+        "schemas/cli-plan-v1.json",
     ] {
         if !Path::new(required).is_file() {
             return Err(format!("required repository file {required:?} is missing"));

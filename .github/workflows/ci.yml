@@ -30,6 +30,7 @@ jobs:
       - run: cargo run --locked -p ferrodoc-bench --example export_real_regression
       - run: cargo run --locked -p ferrodoc-router --example export_router_schemas
       - run: cargo run --locked -p ferrodoc-research --example export_research_schemas
+      - run: cargo run --locked -p ferrodoc --example export_cli_schemas
       - run: ./scripts/smoke.sh
       - run: ./scripts/benchmark-smoke.sh
       - run: ./scripts/routing-smoke.sh
