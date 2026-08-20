@@ -226,6 +226,22 @@ fn malformed_and_missing_inputs_have_structured_errors() {
 }
 
 #[test]
+fn oversized_pdf_is_rejected_before_reading_its_payload() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("oversized.pdf");
+    let file = fs::File::create(&path).unwrap();
+    file.set_len(256 * Bytes::MIB + 1).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+        .arg("inspect")
+        .arg(path)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["category"], "limit_exceeded");
+}
+
+#[test]
 fn invalid_environment_and_engine_overrides_fail() {
     let invalid_environment = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
         .arg("plan")
