@@ -35,6 +35,8 @@ fn doctor() -> Result<(), String> {
         "fixtures/protocol/v1/client-hello.bin",
         "schemas/protocol-request-v1.json",
         "schemas/protocol-response-v1.json",
+        "models/ocrs-cpu.json",
+        "models/README.md",
     ] {
         if !Path::new(required).is_file() {
             return Err(format!("required repository file {required:?} is missing"));

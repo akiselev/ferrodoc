@@ -1,7 +1,13 @@
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
     process::{Command, Output},
+};
+
+use ferrodoc_core::{
+    Bytes, CURRENT_SCHEMA_VERSION, LicenseMetadata, MediaType, ModelFile, ModelId, ModelManifest,
+    RelativePath, Sha256Digest,
 };
 
 fn fixture(name: &str) -> PathBuf {
@@ -23,7 +29,7 @@ fn reports_truthful_phase_status() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "Ferrodoc Phase 2 offline PDF vertical slice\n"
+        "Ferrodoc Phase 4 resource-aware runtime\n"
     );
 }
 
@@ -153,12 +159,205 @@ fn invalid_environment_and_engine_overrides_fail() {
 }
 
 #[test]
-fn hardware_preserves_unknown_memory() {
+fn hardware_reports_measurements_or_explicit_unknowns() {
     let output = run(&["hardware"]);
     assert!(output.status.success());
     let inventory: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(inventory["ram_total"]["status"], "unknown");
-    assert_eq!(inventory["ram_available"]["status"], "unknown");
+    for field in [
+        "logical_cpus",
+        "physical_cpus",
+        "ram_total",
+        "ram_available",
+    ] {
+        assert!(matches!(
+            inventory[field]["status"].as_str(),
+            Some("known" | "unknown")
+        ));
+    }
+    if inventory["ram_total"]["status"] == "known" {
+        assert_eq!(inventory["ram_source"]["status"], "known");
+    }
+}
+
+#[test]
+fn model_commands_install_list_verify_and_collect_offline() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = directory.path().join("store");
+    let source = directory.path().join("source");
+    fs::create_dir_all(source.join("weights")).unwrap();
+    let model_bytes = b"fixture model bytes";
+    fs::write(source.join("weights/model.bin"), model_bytes).unwrap();
+    let manifest = ModelManifest::new(
+        CURRENT_SCHEMA_VERSION,
+        ModelId::derive(&[b"cli-model"]),
+        "fixture-revision",
+        vec![
+            ModelFile::new(
+                RelativePath::new("weights/model.bin").unwrap(),
+                Sha256Digest::of_bytes(model_bytes),
+                Bytes::new(model_bytes.len() as u64),
+                MediaType::new("application/octet-stream").unwrap(),
+            )
+            .unwrap(),
+        ],
+        LicenseMetadata {
+            expression: "MIT".into(),
+            source: "fixture".into(),
+            notice: None,
+        },
+        None,
+    )
+    .unwrap();
+    let manifest_path = directory.path().join("manifest.json");
+    fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let pull = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+        .args(["models", "pull", "--store"])
+        .arg(&store)
+        .arg("--manifest")
+        .arg(&manifest_path)
+        .arg("--source")
+        .arg(&source)
+        .output()
+        .unwrap();
+    assert!(
+        pull.status.success(),
+        "{}",
+        String::from_utf8_lossy(&pull.stderr)
+    );
+    for action in ["list", "verify", "gc"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+            .args(["models", action, "--store"])
+            .arg(&store)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{action}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(serde_json::from_slice::<serde_json::Value>(&output.stdout).is_ok());
+    }
+}
+
+#[test]
+fn plugin_doctor_and_plan_expose_categorized_resource_decisions() {
+    let doctor = run(&[
+        "plugins",
+        "doctor",
+        "--plugin",
+        "/definitely/missing/engine",
+    ]);
+    assert!(doctor.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&doctor.stdout).unwrap();
+    let stages: BTreeSet<_> = report["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|check| {
+            (
+                check["stage"].as_str().unwrap(),
+                check["status"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert!(stages.contains(&("discovery", "failed")));
+    assert!(stages.contains(&("model", "failed")));
+    assert!(stages.contains(&("health", "failed")));
+    assert!(stages.contains(&("inference", "skipped")));
+
+    let plan = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+        .args(["plan", "--profile", "low-vram", "--max-ram", "1 MiB"])
+        .arg(fixture("born-digital.pdf"))
+        .output()
+        .unwrap();
+    assert!(
+        plan.status.success(),
+        "{}",
+        String::from_utf8_lossy(&plan.stderr)
+    );
+    let plan: serde_json::Value = serde_json::from_slice(&plan.stdout).unwrap();
+    let codes: BTreeSet<_> = plan["resource_plans"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|report| report["decisions"].as_array().unwrap())
+        .flat_map(|decision| decision["reasons"].as_array().unwrap())
+        .filter_map(|reason| reason["code"].as_str())
+        .collect();
+    assert!(codes.contains("ram_budget_exceeded"));
+    assert!(codes.contains("model_unavailable"));
+}
+
+#[test]
+fn explain_reports_leases_cache_decisions_and_measurement_state() {
+    let output = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+        .arg("explain")
+        .arg(fixture("born-digital.pdf"))
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let explanation: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(explanation["leases"].is_array());
+    assert_eq!(
+        explanation["cache_decisions"][0]["decision"],
+        "not_configured"
+    );
+    assert!(explanation["measurements"][0]["measurement"].is_object());
+}
+
+#[test]
+fn configured_stage_cache_changes_miss_to_verified_hit() {
+    let directory = tempfile::tempdir().unwrap();
+    let run_explain = || {
+        Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+            .args(["explain", "--cache-dir"])
+            .arg(directory.path())
+            .arg(fixture("born-digital.pdf"))
+            .output()
+            .unwrap()
+    };
+    let first = run_explain();
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let first: serde_json::Value = serde_json::from_slice(&first.stdout).unwrap();
+    assert_eq!(first["cache_decisions"][0]["decision"], "miss");
+    assert_eq!(first["leases"].as_array().unwrap().len(), 1);
+
+    let second = run_explain();
+    assert!(
+        second.status.success(),
+        "{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    let second: serde_json::Value = serde_json::from_slice(&second.stdout).unwrap();
+    assert_eq!(second["cache_decisions"][0]["decision"], "hit");
+    assert!(second["leases"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn conversion_rejects_a_hard_ram_budget_before_engine_execution() {
+    let output = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+        .args(["convert", "--max-ram", "1 MiB"])
+        .arg(fixture("born-digital.pdf"))
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["category"], "runtime");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("RamBudgetExceeded")
+    );
 }
 
 #[test]

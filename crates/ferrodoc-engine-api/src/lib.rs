@@ -14,8 +14,8 @@ use std::{
 };
 
 use ferrodoc_core::{
-    BackendId, Bytes, Capability, DeviceId, DeviceKind, Estimate, Millis, RequestId,
-    ResourceEstimate, ScopedBlob,
+    BackendId, Bytes, Capability, DeviceId, DeviceKind, Estimate, EstimateSource, Millis,
+    RequestId, ResourceEstimate, ScopedBlob,
 };
 use ferrodoc_ir::Evidence;
 use schemars::JsonSchema;
@@ -116,10 +116,19 @@ pub struct DeviceInventory {
 pub struct HardwareInventory {
     /// Logical CPU count when known.
     pub logical_cpus: Estimate<u32>,
+    /// Physical CPU core count when the operating system exposes it.
+    #[serde(default)]
+    pub physical_cpus: Estimate<u32>,
+    /// Provenance for the CPU topology values.
+    #[serde(default)]
+    pub cpu_source: Estimate<EstimateSource>,
     /// Total host RAM.
     pub ram_total: Estimate<Bytes>,
     /// Currently available host RAM.
     pub ram_available: Estimate<Bytes>,
+    /// Provenance for the host RAM values.
+    #[serde(default)]
+    pub ram_source: Estimate<EstimateSource>,
     /// Physical compute devices.
     #[serde(default)]
     pub devices: Vec<DeviceInventory>,

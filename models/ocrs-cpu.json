@@ -1,0 +1,31 @@
+{
+  "schema_version": {
+    "major": 1,
+    "minor": 0
+  },
+  "id": "model_9b23980979e6f21c2cc2ff84e2ba975bb86ae01a41c96e83eb893ed9d1305e9d",
+  "revision": "s3-pair-f15cfb56-e484866d",
+  "files": [
+    {
+      "path": "text-detection.rten",
+      "digest": "f15cfb56bd02c4bf478a20343986504a1f01e1665c2b3a0ad66340f054b1b5ca",
+      "bytes": 2510284,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "text-recognition.rten",
+      "digest": "e484866d4cce403175bd8d00b128feb08ab42e208de30e42cd9889d8f1735a6e",
+      "bytes": 9716568,
+      "media_type": "application/octet-stream"
+    }
+  ],
+  "license": {
+    "expression": "CC-BY-SA-4.0",
+    "source": "https://ocrs-models.s3-accelerate.amazonaws.com/",
+    "notice": "The upstream OCRS model card identifies its pretrained models as CC-BY-SA-4.0. Preserve attribution and share-alike obligations when redistributing these model artifacts."
+  },
+  "acceptance": {
+    "kind": "license",
+    "prompt": "I accept the CC-BY-SA-4.0 terms and the upstream model attribution obligations."
+  }
+}

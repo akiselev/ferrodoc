@@ -14,6 +14,8 @@ path = "src/main.rs"
 [dependencies]
 ferrodoc-core = { path = "../ferrodoc-core" }
 ferrodoc-engine-api = { path = "../ferrodoc-engine-api" }
+ferrodoc-engine-ocrs = { path = "../../engines/ferrodoc-engine-ocrs" }
+ferrodoc-layout-rulebased = { path = "../../engines/ferrodoc-layout-rulebased" }
 ferrodoc-pdf = { path = "../ferrodoc-pdf" }
 ferrodoc-render = { path = "../ferrodoc-render" }
 ferrodoc-runtime = { path = "../ferrodoc-runtime" }

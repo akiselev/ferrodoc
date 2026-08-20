@@ -10,6 +10,7 @@ pub struct Configuration {
     pub input: PathBuf,
     pub model_dir: Option<PathBuf>,
     pub options: ConversionOptions,
+    pub cache_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Error)]
@@ -33,6 +34,7 @@ impl Configuration {
             .map(|value| parse_u32("FERRODOC_OCR_DPI", value))
             .transpose()?;
         let env_model_dir = optional_env("FERRODOC_OCRS_MODEL_DIR")?.map(PathBuf::from);
+        let env_cache_dir = optional_env("FERRODOC_CACHE_DIR")?.map(PathBuf::from);
         let engine = arguments
             .ocr_engine
             .or(optional_env("FERRODOC_OCR_ENGINE")?)
@@ -50,6 +52,12 @@ impl Configuration {
             .or(env_threshold)
             .unwrap_or(options.native_character_threshold);
         options.ocr_dpi = arguments.ocr_dpi.or(env_dpi).unwrap_or(options.ocr_dpi);
+        options.profile = arguments.profile.unwrap_or(options.profile);
+        options.max_ram = arguments.max_ram;
+        options.max_vram = arguments.max_vram;
+        options.max_remote_cost = arguments.max_remote_cost;
+        options.deadline = arguments.deadline;
+        options.allow_unknown_hard_estimates = arguments.allow_unknown_estimates;
         if !(72..=300).contains(&options.ocr_dpi) {
             return Err(ConfigurationError::Invalid {
                 name: "OCR DPI",
@@ -61,6 +69,7 @@ impl Configuration {
             input: arguments.input,
             model_dir: arguments.model_dir.or(env_model_dir),
             options,
+            cache_dir: arguments.cache_dir.or(env_cache_dir),
         })
     }
 }
