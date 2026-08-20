@@ -26,6 +26,7 @@ pub mod hardware;
 pub mod model_store;
 pub mod planner;
 mod process;
+pub mod scheduler;
 
 pub use process::{PluginCommand, ProcessConfig, ProcessEngine};
 
