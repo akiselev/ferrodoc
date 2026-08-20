@@ -10,6 +10,7 @@ description = "Integrity-first benchmark evaluator for Ferrodoc"
 [dependencies]
 ferrodoc-core = { path = "../../crates/ferrodoc-core" }
 ferrodoc-foundry = { path = "../ferrodoc-foundry" }
+ferrodoc-ir = { path = "../../crates/ferrodoc-ir" }
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
