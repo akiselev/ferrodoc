@@ -44,3 +44,5 @@ Model digests used for development and optional CI:
 - README quick-start commands are exercised by the offline smoke script.
 
 Remote PR creation and repository settings were not performed; this phase is merged locally after all gates pass.
+
+Final validation passed 69 default tests, strict workspace Clippy, generated-artifact cleanliness, offline smoke, `xtask doctor`, the 98.52-second post-fix model-backed scan/hybrid test, and the four-page Lightbulb born-digital conversion.

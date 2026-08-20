@@ -989,7 +989,7 @@ Every phase PR updates this table. Use only: `planned`, `in progress`, `blocked`
 | Plan | complete | #2 | `621c65ba54b22ca15478c55e2d203af8e7256a10` | merged as `1be7412de6b0b42d72401377151097f718cd1d36` |
 | 0 — repository recovery | complete | local merge | `1be7412de6b0b42d72401377151097f718cd1d36` | all local gates passed; see `docs/phase-0-pr.md`; remote branch protection remains a release operation |
 | 1 — foundations and IR | complete | local merge | `8e6e44f` | all 47 tests and local gates passed; see `docs/phase-1-pr.md` |
-| 2 — minimal conversion | in progress | — | `90f7266` | PDF/OCR vertical-slice implementation started |
+| 2 — minimal conversion | complete | local merge | `90f7266` | all 69 default tests, model-backed scan/hybrid test, offline smoke, and Lightbulb born-digital conversion passed; see `docs/phase-2-pr.md` |
 | 3 — process protocol | planned | — | — | — |
 | 4 — resource runtime | planned | — | — | — |
 | 5 — trustworthy benchmarks | planned | — | — | — |
