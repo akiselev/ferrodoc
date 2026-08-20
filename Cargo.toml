@@ -12,6 +12,8 @@ members = [
   "crates/ferrodoc-cli",
   "engines/ferrodoc-layout-rulebased",
   "engines/ferrodoc-engine-ocrs",
+  "engines/ferrodoc-engine-tesseract",
+  "engines/ferrodoc-engine-command",
   "engines/ferrodoc-engine-mock",
   "tools/ferrodoc-foundry",
   "tools/ferrodoc-bench",
@@ -44,6 +46,7 @@ thiserror = "2.0"
 uuid = { version = "1.12", features = ["v4", "serde"] }
 unicode-normalization = "0.1"
 libc = "0.2"
+libloading = "0.9"
 
 [profile.release]
 lto = "thin"

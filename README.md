@@ -4,7 +4,9 @@ Ferrodoc is a pre-release Rust project for offline, evidence-preserving document
 
 ## Current status
 
-Repository recovery through the Phase 4 resource runtime is implemented, with the Phase 5 foundry and integrity-first benchmark loop available. Born-digital PDFs convert without models. Scanned and hybrid PDFs use the pure-Rust OCRS engine when an explicit verified model pair is supplied. Engines can run embedded or over the bounded process protocol; conversion applies explainable hard constraints, scheduler leases, and an optional deterministic stage cache.
+Repository recovery through the Phase 6 qualified engine portfolio is implemented, including the Phase 5 foundry and integrity-first benchmark loop. Born-digital PDFs convert without models. Scanned and hybrid PDFs use the pure-Rust OCRS engine when an explicit verified model pair is supplied. Engines can run embedded or over the bounded process protocol; conversion applies explainable hard constraints, scheduler leases, and an optional deterministic stage cache.
+
+Phase 6 qualifies the native PDF, rule-based layout, OCRS, deterministic mock, optional Tesseract C-API, and experimental no-shell command boundaries. The default `cpu-minimal` and `process-engines` features remain pure Rust and network-free. See the [qualified engine portfolio](docs/engines/README.md).
 
 The implementation sequence and acceptance gates are defined in [PLAN.md](PLAN.md). Current work is summarized in [STATUS.md](STATUS.md), and the discarded source payload is documented in [docs/recovery-inventory.md](docs/recovery-inventory.md).
 
@@ -47,6 +49,15 @@ Ferrodoc never downloads models during build or conversion. The checked-in [OCRS
 `plan` accepts profiles plus hard `--max-ram`, `--max-vram`, `--max-cost-microusd`, and `--deadline-ms` constraints. Unknown values fail hard limits unless `--allow-unknown-estimates` explicitly requests guarded execution. `--cache-dir DIR` enables atomic stage caching from input, model, engine, schema, page, seed, and normalized-parameter identity.
 
 The deterministic foundry, real regression corpus, evaluator contracts, metrics, measurement evidence, held-out rules, and Pareto comparison workflow are described in [Benchmarking and corpus governance](docs/benchmarking.md). The default benchmark smoke is offline and explicitly verifies that missing work scores as failure rather than success.
+
+Optional Tesseract is selected explicitly and discovered at runtime; the default binary never links a native OCR library:
+
+```bash
+cargo run --locked -p ferrodoc --features tesseract -- plugins doctor --inference
+cargo run --locked -p ferrodoc --features tesseract -- convert scan.pdf --ocr-engine tesseract
+```
+
+The experimental command wrapper requires a trusted `FERRODOC_COMMAND_CONFIG`, an absolute canonical executable allowlist, typed arguments, and process transport. It is not selected by the CLI as an official OCR engine. Fixed-corpus portfolio reports are produced by `scripts/engine-qualification.sh` and retain failures plus explicit unknown resources.
 
 ## Design invariants
 

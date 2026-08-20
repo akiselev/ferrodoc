@@ -26,7 +26,7 @@ pub const ENGINE_ID: &str = "ocr.ocrs";
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Raw pixel input type accepted across the engine API.
 pub const RGBA8_MEDIA_TYPE: &str = "application/vnd.ferrodoc.rgba8";
-const MAXIMUM_PIXELS: u64 = 200_000_000;
+const MAXIMUM_PIXELS: u64 = 50_000_000;
 
 /// OCRS engine with explicitly provisioned model state.
 pub struct OcrsEngine {

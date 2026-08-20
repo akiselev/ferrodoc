@@ -18,6 +18,8 @@ use ferrodoc_ir::{Evidence, EvidenceContent, RegionKind};
 pub const ENGINE_ID: &str = "layout.rulebased";
 /// Engine semantic version.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
+const MAX_INPUT_BYTES: usize = 16 * Bytes::MIB as usize;
+const MAX_PAGE_DIMENSION: f64 = 1_000_000.0;
 
 /// Basic deterministic layout engine for extracted UTF-8 page text.
 pub struct RuleBasedLayoutEngine {
@@ -103,6 +105,9 @@ impl Engine for RuleBasedLayoutEngine {
             return Err(invalid("layout input must have media type text/plain"));
         }
         let bytes = context.blobs.resolve(&request.input)?;
+        if bytes.len() > MAX_INPUT_BYTES {
+            return Err(resource("layout text exceeds the 16 MiB input limit"));
+        }
         let text = std::str::from_utf8(&bytes).map_err(|_| invalid("layout input is not UTF-8"))?;
         let width = positive_parameter(&request, "page_width")?;
         let height = positive_parameter(&request, "page_height")?;
@@ -199,7 +204,7 @@ fn positive_parameter(request: &EngineRequest, key: &str) -> Result<f64, EngineE
         .parameters
         .get(key)
         .and_then(serde_json::Value::as_f64)
-        .filter(|value| value.is_finite() && *value > 0.0)
+        .filter(|value| value.is_finite() && *value > 0.0 && *value <= MAX_PAGE_DIMENSION)
         .ok_or_else(|| invalid(format!("missing or invalid {key} parameter")))
 }
 
@@ -257,6 +262,10 @@ fn invalid(message: impl Into<String>) -> EngineError {
 
 fn internal(message: impl Into<String>) -> EngineError {
     EngineError::new(EngineErrorCategory::Internal, false, message)
+}
+
+fn resource(message: impl Into<String>) -> EngineError {
+    EngineError::new(EngineErrorCategory::ResourceExhausted, false, message)
 }
 
 #[cfg(test)]
@@ -353,5 +362,37 @@ mod tests {
                 "Final text."
             ]
         );
+    }
+
+    #[test]
+    fn oversized_text_is_rejected_before_segmentation() {
+        let bytes = vec![b'x'; MAX_INPUT_BYTES + 1];
+        let request = EngineRequest {
+            request_id: RequestId::derive(&[b"oversized-layout-test"]),
+            capability: Capability::LayoutDetect,
+            input: ScopedBlob {
+                id: BlobId::new("oversized-text").unwrap(),
+                range: BlobRange::new(0, bytes.len() as u64).unwrap(),
+                media_type: MediaType::new("text/plain").unwrap(),
+                expected_digest: Some(Sha256Digest::of_bytes(&bytes)),
+            },
+            page_index: Some(0),
+            parameters: BTreeMap::from([
+                ("page_width".into(), serde_json::json!(595.0)),
+                ("page_height".into(), serde_json::json!(842.0)),
+            ]),
+            deterministic_seed: None,
+            deadline: None,
+        };
+        let context = ExecutionContext {
+            cancellation: CancellationToken::default(),
+            deadline: None,
+            blobs: &Resolver(bytes),
+            trace: &Trace,
+        };
+        let error = RuleBasedLayoutEngine::new()
+            .execute(request, &context)
+            .unwrap_err();
+        assert_eq!(error.category, EngineErrorCategory::ResourceExhausted);
     }
 }

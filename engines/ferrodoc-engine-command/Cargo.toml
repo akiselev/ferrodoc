@@ -1,23 +1,17 @@
 [package]
-name = "ferrodoc-bench"
+name = "ferrodoc-engine-command"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Integrity-first benchmark evaluator for Ferrodoc"
+description = "Experimental allowlisted no-shell command escape hatch for Ferrodoc"
 
 [dependencies]
 ferrodoc-core = { path = "../../crates/ferrodoc-core" }
-ferrodoc-foundry = { path = "../ferrodoc-foundry" }
+ferrodoc-engine-api = { path = "../../crates/ferrodoc-engine-api" }
 ferrodoc-ir = { path = "../../crates/ferrodoc-ir" }
-schemars.workspace = true
+ferrodoc-plugin-sdk = { path = "../../crates/ferrodoc-plugin-sdk" }
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
-unicode-normalization.workspace = true
-libc.workspace = true
-tempfile.workspace = true
-
-[dev-dependencies]
 tempfile.workspace = true

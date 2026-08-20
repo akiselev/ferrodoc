@@ -1,0 +1,19 @@
+[package]
+name = "ferrodoc-engine-tesseract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Dynamically discovered Tesseract C-API engine for Ferrodoc"
+
+[dependencies]
+ferrodoc-core = { path = "../../crates/ferrodoc-core" }
+ferrodoc-engine-api = { path = "../../crates/ferrodoc-engine-api" }
+ferrodoc-ir = { path = "../../crates/ferrodoc-ir" }
+ferrodoc-plugin-sdk = { path = "../../crates/ferrodoc-plugin-sdk" }
+libloading.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+ferrodoc-pdf = { path = "../../crates/ferrodoc-pdf" }

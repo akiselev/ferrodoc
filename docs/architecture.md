@@ -13,7 +13,9 @@ ferrodoc-core
 │   │   ├── ferrodoc-protocol
 │   │   ├── ferrodoc-runtime
 │   │   ├── ferrodoc-layout-rulebased
-│   │   └── ferrodoc-engine-ocrs
+│   │   ├── ferrodoc-engine-ocrs
+│   │   ├── ferrodoc-engine-tesseract
+│   │   └── ferrodoc-engine-command
 │   └── ferrodoc-render
 ├── ferrodoc-pdf
 ├── ferrodoc-foundry
@@ -28,7 +30,8 @@ ferrodoc-core
 - `ferrodoc-plugin-sdk` is the thin stdin/stdout server wrapper; protocol stdout never carries diagnostics.
 - `ferrodoc-runtime` owns embedded registration, the bounded isolated process host, content-addressed model views, sourced hardware inventory, explainable planning, scheduler leases, stage caching, native-quality routing, evidence append, deterministic reconciliation, plans, and traces.
 - `ferrodoc-pdf` performs bounded inspection/native extraction with lopdf and deterministic pure-Rust rasterization with Hayro.
-- `ferrodoc-layout-rulebased` and `ferrodoc-engine-ocrs` implement the common engine trait. OCRS model bytes are injected explicitly and never acquired by the engine.
+- `ferrodoc-layout-rulebased`, `ferrodoc-engine-ocrs`, and optional `ferrodoc-engine-tesseract` implement the common engine trait and conformance suite. OCRS model bytes are injected explicitly; Tesseract is dynamically discovered through a narrow C API and hashes initialized traineddata. Neither engine acquires models.
+- `ferrodoc-engine-command` is an experimental, separately configured escape hatch with canonical executable allowlisting, typed arguments, no shell, bounded I/O, and deadlines. It is not an official OCR integration or a default runtime candidate.
 - `ferrodoc-render` emits deterministic Markdown, semantic HTML, and canonical full-evidence JSON.
 - `ferrodoc-foundry` owns deterministic synthetic PDFs, semantic truth, licensed asset declarations, non-overlapping partitions, and content-bound corpus manifests.
 - `ferrodoc-bench` owns prediction/report schemas, complete case accounting, quality metrics, measurement evidence, and policy-specific Pareto comparison. It verifies corpus bytes before scoring.
@@ -54,3 +57,4 @@ Candidate planning rejects unknown hard estimates by default and never invents a
 
 See [ADR 0001](adr/0001-consolidate-runtime.md) and [ADR 0002](adr/0002-transport-independent-engines.md).
 Benchmark integrity and held-out governance are specified in [Benchmarking and corpus governance](benchmarking.md).
+Engine capabilities, estimates, dependencies, licenses, isolation, and benchmark status are specified in the [qualified engine portfolio](engines/README.md).

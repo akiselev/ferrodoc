@@ -30,6 +30,11 @@ jobs:
       - run: cargo run --locked -p ferrodoc-bench --example export_real_regression
       - run: ./scripts/smoke.sh
       - run: ./scripts/benchmark-smoke.sh
+      - name: Qualify default native portfolio on fixed real corpus
+        run: |
+          cargo build --locked -p ferrodoc
+          target_dir=$(cargo metadata --locked --format-version 1 --no-deps | jq -r .target_directory)
+          ./scripts/engine-qualification.sh "$target_dir/debug/ferrodoc" "$RUNNER_TEMP/qualification"
       - run: git diff --exit-code
 
   process-protocol:
@@ -48,6 +53,13 @@ jobs:
           FERRODOC_TEST_LAYOUT_BINARY="$target_dir/debug/ferrodoc-layout-rulebased" \
             cargo test --locked -p ferrodoc-runtime --test process_engines \
               layout_wrapper_matches_embedded_when_binary_is_provided -- --exact
+      - name: Test experimental command embedded/process parity
+        run: |
+          cargo build --locked -p ferrodoc-engine-command --bin ferrodoc-engine-command
+          target_dir=$(cargo metadata --locked --format-version 1 --no-deps | jq -r .target_directory)
+          FERRODOC_TEST_COMMAND_BINARY="$target_dir/debug/ferrodoc-engine-command" \
+            cargo test --locked -p ferrodoc-runtime --test process_engines \
+              experimental_command_wrapper_matches_embedded_without_a_shell -- --exact
 
   vertical-slice-ocrs:
     runs-on: ubuntu-latest
@@ -90,3 +102,47 @@ jobs:
           FERRODOC_TEST_OCRS_BINARY="$target_dir/debug/ferrodoc-engine-ocrs" \
             cargo test --locked -p ferrodoc-runtime --test process_engines \
               ocrs_wrapper_matches_embedded_when_binary_and_models_are_provided -- --exact
+      - name: Qualify OCRS portfolio on fixed real corpus
+        env:
+          FERRODOC_TEST_OCRS_MODEL_DIR: ${{ runner.temp }}/ocrs-models
+        run: |
+          cargo build --locked -p ferrodoc
+          target_dir=$(cargo metadata --locked --format-version 1 --no-deps | jq -r .target_directory)
+          ./scripts/engine-qualification.sh "$target_dir/debug/ferrodoc" "$RUNNER_TEMP/qualification"
+
+  optional-tesseract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install optional Tesseract runtime and English data
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libtesseract-dev tesseract-ocr-eng
+      - name: Run native C-API conformance
+        env:
+          FERRODOC_REQUIRE_TESSERACT: "1"
+        run: cargo test --locked -p ferrodoc-engine-tesseract --test conformance
+      - name: Test Tesseract embedded/process parity
+        run: |
+          cargo build --locked -p ferrodoc-engine-tesseract --bin ferrodoc-engine-tesseract
+          target_dir=$(cargo metadata --locked --format-version 1 --no-deps | jq -r .target_directory)
+          FERRODOC_TEST_TESSERACT_BINARY="$target_dir/debug/ferrodoc-engine-tesseract" \
+            cargo test --locked -p ferrodoc-runtime --features tesseract --test process_engines \
+              tesseract_wrapper_matches_embedded_when_binary_and_dependency_are_provided -- --exact
+      - name: Test scanned conversion through Tesseract
+        run: |
+          cargo run --locked -p ferrodoc --features tesseract -- convert \
+            fixtures/pdf/image-only.pdf --ocr-engine tesseract --format markdown \
+            --output "$RUNNER_TEMP/tesseract.md"
+          test "$(cat "$RUNNER_TEMP/tesseract.md")" = $'SCANNED FERRODOC PAGE\nOptical text survives the CPU path.'
+      - name: Qualify Tesseract portfolio on fixed real corpus
+        env:
+          FERRODOC_TEST_TESSERACT: "1"
+        run: |
+          target_dir=$(cargo metadata --locked --format-version 1 --no-deps | jq -r .target_directory)
+          ./scripts/engine-qualification.sh "$target_dir/debug/ferrodoc" "$RUNNER_TEMP/qualification"

@@ -6,13 +6,17 @@ rust-version.workspace = true
 license.workspace = true
 
 [features]
-default = []
+default = ["cpu-minimal", "process-engines"]
+cpu-minimal = []
+process-engines = []
+tesseract = ["dep:ferrodoc-engine-tesseract"]
 nvml = ["dep:nvml-wrapper"]
 
 [dependencies]
 ferrodoc-core = { path = "../ferrodoc-core" }
 ferrodoc-engine-api = { path = "../ferrodoc-engine-api" }
 ferrodoc-engine-ocrs = { path = "../../engines/ferrodoc-engine-ocrs" }
+ferrodoc-engine-tesseract = { path = "../../engines/ferrodoc-engine-tesseract", optional = true }
 ferrodoc-ir = { path = "../ferrodoc-ir" }
 ferrodoc-layout-rulebased = { path = "../../engines/ferrodoc-layout-rulebased" }
 ferrodoc-pdf = { path = "../ferrodoc-pdf" }
@@ -26,4 +30,5 @@ uuid.workspace = true
 
 [dev-dependencies]
 ferrodoc-core = { path = "../ferrodoc-core" }
+ferrodoc-engine-command = { path = "../../engines/ferrodoc-engine-command" }
 tempfile.workspace = true

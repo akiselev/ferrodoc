@@ -29,7 +29,44 @@ fn reports_truthful_phase_status() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "Ferrodoc Phase 4 resource-aware runtime\n"
+        "Ferrodoc Phase 6 qualified engine runtime\n"
+    );
+}
+
+#[cfg(feature = "tesseract")]
+#[test]
+fn tesseract_feature_converts_the_scanned_fixture_when_available() {
+    let doctor = run(&["plugins", "doctor"]);
+    assert!(doctor.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&doctor.stdout).unwrap();
+    let healthy = report["checks"].as_array().unwrap().iter().any(|check| {
+        check["engine_id"] == "ocr.tesseract"
+            && check["stage"] == "health"
+            && check["status"] == "passed"
+    });
+    if !healthy {
+        assert!(std::env::var_os("FERRODOC_REQUIRE_TESSERACT").is_none());
+        return;
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+        .args([
+            "convert",
+            "--ocr-engine",
+            "tesseract",
+            "--format",
+            "markdown",
+        ])
+        .arg(fixture("image-only.pdf"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "SCANNED FERRODOC PAGE\nOptical text survives the CPU path.\n"
     );
 }
 

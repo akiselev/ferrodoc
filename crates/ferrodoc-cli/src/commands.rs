@@ -5,6 +5,8 @@ use ferrodoc_core::{
 };
 use ferrodoc_engine_api::{EngineError, EngineRequest};
 use ferrodoc_engine_ocrs::{OcrsEngine, RGBA8_MEDIA_TYPE};
+#[cfg(feature = "tesseract")]
+use ferrodoc_engine_tesseract::TesseractEngine;
 use ferrodoc_layout_rulebased::RuleBasedLayoutEngine;
 use ferrodoc_pdf::{PdfDocument, PdfLimits};
 use ferrodoc_render::render;
@@ -75,7 +77,7 @@ impl CommandError {
 pub fn run(command: Command) -> Result<(), CommandError> {
     match command {
         Command::Version => println!("ferrodoc {}", env!("CARGO_PKG_VERSION")),
-        Command::Status => println!("Ferrodoc Phase 4 resource-aware runtime"),
+        Command::Status => println!("Ferrodoc Phase 6 qualified engine runtime"),
         Command::Hardware => print_json(&ferrodoc_runtime::hardware::inventory())?,
         Command::Models(command) => run_models(command)?,
         Command::PluginsDoctor(arguments) => plugins_doctor(arguments)?,
@@ -198,8 +200,15 @@ fn plugins_doctor(arguments: PluginsDoctorArgs) -> Result<(), CommandError> {
         )?,
         None => OcrsEngine::without_models(),
     };
-    let ocr_probe = arguments.inference.then(ocr_probe).transpose()?;
-    report.inspect_engine(&mut ocr, ocr_probe);
+    let ocrs_probe = arguments.inference.then(ocr_probe).transpose()?;
+    report.inspect_engine(&mut ocr, ocrs_probe);
+
+    #[cfg(feature = "tesseract")]
+    {
+        let mut tesseract = TesseractEngine::discover("eng");
+        let probe = arguments.inference.then(ocr_probe).transpose()?;
+        report.inspect_engine(&mut tesseract, probe);
+    }
 
     for executable in arguments.plugins {
         let identity = executable.display().to_string();
@@ -295,7 +304,11 @@ fn convert(arguments: ConvertArgs) -> Result<(), CommandError> {
 fn converter_and_input(arguments: PipelineArgs) -> Result<(Converter, Vec<u8>), CommandError> {
     let configuration = Configuration::load(arguments)?;
     let bytes = read(&configuration.input)?;
-    let mut converter = load_converter(configuration.options, configuration.model_dir.as_deref())?;
+    let mut converter = load_converter(
+        configuration.options,
+        &configuration.ocr_engine,
+        configuration.model_dir.as_deref(),
+    )?;
     if let Some(cache_dir) = configuration.cache_dir {
         converter.enable_cache(cache_dir)?;
     }
@@ -304,15 +317,22 @@ fn converter_and_input(arguments: PipelineArgs) -> Result<(Converter, Vec<u8>), 
 
 fn load_converter(
     options: ConversionOptions,
+    engine: &str,
     model_dir: Option<&Path>,
 ) -> Result<Converter, CommandError> {
-    match model_dir {
-        None => Ok(Converter::new(options)),
-        Some(directory) => Ok(Converter::with_ocrs_models(
+    match (engine, model_dir) {
+        ("ocrs", None) => Ok(Converter::new(options)),
+        ("ocrs", Some(directory)) => Ok(Converter::with_ocrs_models(
             options,
             read(&directory.join("text-detection.rten"))?,
             read(&directory.join("text-recognition.rten"))?,
         )?),
+        #[cfg(feature = "tesseract")]
+        ("tesseract", None) => Ok(Converter::with_tesseract(
+            options,
+            TesseractEngine::discover("eng"),
+        )),
+        _ => unreachable!("configuration validated OCR engine and model combination"),
     }
 }
 
