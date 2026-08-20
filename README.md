@@ -4,7 +4,7 @@ Ferrodoc is a pre-release Rust project for offline, evidence-preserving document
 
 ## Current status
 
-Repository recovery through the Phase 4 resource runtime is implemented, with the Phase 5 foundry and integrity-first benchmark loop available. Born-digital PDFs convert without models. Scanned and hybrid PDFs use the pure-Rust OCRS engine when an explicit verified model pair is supplied. Engines can run embedded or over the bounded process protocol; conversion applies explainable hard constraints, scheduler leases, and an optional deterministic stage cache.
+Repository recovery through the Phase 6 qualified engine portfolio is implemented, including the Phase 5 foundry and integrity-first benchmark loop. Born-digital PDFs convert without models. Scanned and hybrid PDFs use the pure-Rust OCRS engine when an explicit verified model pair is supplied. Engines can run embedded or over the bounded process protocol; conversion applies explainable hard constraints, scheduler leases, and an optional deterministic stage cache.
 
 Phase 6 qualifies the native PDF, rule-based layout, OCRS, deterministic mock, optional Tesseract C-API, and experimental no-shell command boundaries. The default `cpu-minimal` and `process-engines` features remain pure Rust and network-free. See the [qualified engine portfolio](docs/engines/README.md).
 
