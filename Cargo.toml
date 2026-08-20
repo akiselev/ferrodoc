@@ -9,6 +9,8 @@ members = [
   "crates/ferrodoc-protocol",
   "crates/ferrodoc-render",
   "crates/ferrodoc-runtime",
+  "crates/ferrodoc-router",
+  "crates/ferrodoc-research",
   "crates/ferrodoc-cli",
   "engines/ferrodoc-layout-rulebased",
   "engines/ferrodoc-engine-ocrs",

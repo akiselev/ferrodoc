@@ -595,6 +595,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "ferrodoc-research"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-bench",
+ "ferrodoc-core",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "ferrodoc-router"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-bench",
+ "ferrodoc-core",
+ "ferrodoc-foundry",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "ferrodoc-runtime"
 version = "0.2.0"
 dependencies = [
