@@ -1,0 +1,20 @@
+{
+  "branch": "master",
+  "required_status_checks": [
+    "core",
+    "process-protocol",
+    "vertical-slice-ocrs",
+    "optional-tesseract",
+    "portable (ubuntu-latest)",
+    "portable (macos-latest)",
+    "portable (windows-latest)",
+    "msrv",
+    "docs-and-release",
+    "dependency-policy"
+  ],
+  "require_pull_request_reviews": true,
+  "require_conversation_resolution": true,
+  "require_linear_history": false,
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
