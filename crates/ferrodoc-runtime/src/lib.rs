@@ -24,6 +24,7 @@ use thiserror::Error;
 
 pub mod hardware;
 pub mod model_store;
+pub mod planner;
 mod process;
 
 pub use process::{PluginCommand, ProcessConfig, ProcessEngine};
