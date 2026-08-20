@@ -6,7 +6,15 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+ferrodoc-core = { path = "../ferrodoc-core" }
 ferrodoc-engine-api = { path = "../ferrodoc-engine-api" }
+ferrodoc-engine-ocrs = { path = "../../engines/ferrodoc-engine-ocrs" }
+ferrodoc-ir = { path = "../ferrodoc-ir" }
+ferrodoc-layout-rulebased = { path = "../../engines/ferrodoc-layout-rulebased" }
+ferrodoc-pdf = { path = "../ferrodoc-pdf" }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
