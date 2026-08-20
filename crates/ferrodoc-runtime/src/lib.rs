@@ -3,13 +3,15 @@
 use std::collections::BTreeMap;
 
 use ferrodoc_core::{
-    ArtifactId, BlobId, BlobRange, CURRENT_SCHEMA_VERSION, Capability, CoordinateSpace,
+    ArtifactId, BlobId, BlobRange, Bytes, CURRENT_SCHEMA_VERSION, Capability, CoordinateSpace,
     CoordinateTransform, DeterministicProvenance, DocumentId, EvidenceId, LayerId, MediaType,
-    PageId, PageRect, Rect, RegionId, RequestId, ScopedBlob, Sha256Digest, Stage, Unit,
+    MicroUsd, Millis, ModelId, PageId, PageRect, Profile, Rect, RegionId, RequestId, ScopedBlob,
+    Sha256Digest, Stage, Unit,
 };
 use ferrodoc_engine_api::{
     BlobResolver, CancellationToken, Engine, EngineDescriptor, EngineError, EngineErrorCategory,
-    EngineRequest, EngineResponse, ExecutionContext, HealthReport, HealthRequest, TraceSink,
+    EngineRequest, EngineResponse, ExecutionContext, HardwareInventory, HealthReport,
+    HealthRequest, TraceSink,
 };
 use ferrodoc_engine_ocrs::{OcrsEngine, RGBA8_MEDIA_TYPE};
 use ferrodoc_ir::{
@@ -23,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod cache;
+pub mod doctor;
 pub mod hardware;
 pub mod model_store;
 pub mod planner;
@@ -125,6 +128,18 @@ pub struct ConversionOptions {
     pub ocr_dpi: u32,
     /// PDF parser and renderer limits.
     pub pdf_limits: PdfLimits,
+    /// Planner profile for engine placement.
+    pub profile: Profile,
+    /// Optional hard host RAM bound.
+    pub max_ram: Option<Bytes>,
+    /// Optional hard device-memory bound.
+    pub max_vram: Option<Bytes>,
+    /// Optional hard remote-cost bound.
+    pub max_remote_cost: Option<MicroUsd>,
+    /// Optional hard stage latency bound.
+    pub deadline: Option<Millis>,
+    /// Explicit guarded-execution opt-in for unknown hard estimates.
+    pub allow_unknown_hard_estimates: bool,
 }
 
 impl Default for ConversionOptions {
@@ -133,6 +148,12 @@ impl Default for ConversionOptions {
             native_character_threshold: 80,
             ocr_dpi: 144,
             pdf_limits: PdfLimits::default(),
+            profile: Profile::Balanced,
+            max_ram: None,
+            max_vram: None,
+            max_remote_cost: None,
+            deadline: None,
+            allow_unknown_hard_estimates: false,
         }
     }
 }
@@ -246,6 +267,38 @@ impl Converter {
             ocr: OcrsEngine::from_model_bytes(detection, recognition)?,
             options,
         })
+    }
+
+    /// Enumerates and filters the currently implemented engine placements.
+    pub fn resource_plans(
+        &mut self,
+        inventory: &HardwareInventory,
+    ) -> Result<Vec<planner::PlanningReport>, RuntimeError> {
+        let layout = plan_engine(
+            &mut self.layout,
+            Capability::LayoutDetect,
+            planner::ModelAvailability::NotRequired,
+            &self.options,
+            inventory,
+        )?;
+        let model_id = ModelId::derive(&[b"ocrs-model-pair"]);
+        let model = self.ocr.model_digest().map_or(
+            planner::ModelAvailability::Missing {
+                id: model_id.clone(),
+            },
+            |digest| planner::ModelAvailability::Available {
+                id: model_id,
+                digest,
+            },
+        );
+        let ocr = plan_engine(
+            &mut self.ocr,
+            Capability::OcrPage,
+            model,
+            &self.options,
+            inventory,
+        )?;
+        Ok(vec![layout, ocr])
     }
 
     /// Produces an actual per-page plan without executing layout or OCR.
@@ -434,6 +487,56 @@ impl Converter {
             plan,
             trace: ConversionTrace { events: trace },
         })
+    }
+}
+
+fn plan_engine(
+    engine: &mut dyn Engine,
+    capability: Capability,
+    model: planner::ModelAvailability,
+    options: &ConversionOptions,
+    inventory: &HardwareInventory,
+) -> Result<planner::PlanningReport, RuntimeError> {
+    let descriptor = engine.descriptor().clone();
+    let request = EngineRequest {
+        request_id: RequestId::derive(&[
+            descriptor.id.as_bytes(),
+            capability.to_string().as_bytes(),
+        ]),
+        capability,
+        input: ScopedBlob {
+            id: BlobId::new("planner-probe").expect("static blob ID"),
+            range: BlobRange::new(0, 1).expect("nonempty range"),
+            media_type: MediaType::new("application/octet-stream").expect("static media type"),
+            expected_digest: Some(Sha256Digest::of_bytes(&[0])),
+        },
+        page_index: Some(0),
+        parameters: BTreeMap::new(),
+        deterministic_seed: None,
+        deadline: options.deadline,
+    };
+    let candidates = engine
+        .estimate(&request, inventory)?
+        .into_iter()
+        .map(|candidate| planner::CandidateInput {
+            descriptor: descriptor.clone(),
+            candidate,
+            model: model.clone(),
+        });
+    let mut policy = planner::PlannerPolicy::for_profile(options.profile, capability);
+    policy.max_ram = options.max_ram;
+    policy.max_vram = minimum_bytes(policy.max_vram, options.max_vram);
+    policy.max_remote_cost = options.max_remote_cost;
+    policy.deadline = options.deadline;
+    policy.allow_unknown_hard_estimates = options.allow_unknown_hard_estimates;
+    Ok(planner::plan(policy, inventory, candidates))
+}
+
+fn minimum_bytes(left: Option<Bytes>, right: Option<Bytes>) -> Option<Bytes> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left.min(right)),
+        (Some(value), None) | (None, Some(value)) => Some(value),
+        (None, None) => None,
     }
 }
 

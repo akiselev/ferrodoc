@@ -50,6 +50,12 @@ impl Configuration {
             .or(env_threshold)
             .unwrap_or(options.native_character_threshold);
         options.ocr_dpi = arguments.ocr_dpi.or(env_dpi).unwrap_or(options.ocr_dpi);
+        options.profile = arguments.profile.unwrap_or(options.profile);
+        options.max_ram = arguments.max_ram;
+        options.max_vram = arguments.max_vram;
+        options.max_remote_cost = arguments.max_remote_cost;
+        options.deadline = arguments.deadline;
+        options.allow_unknown_hard_estimates = arguments.allow_unknown_estimates;
         if !(72..=300).contains(&options.ocr_dpi) {
             return Err(ConfigurationError::Invalid {
                 name: "OCR DPI",

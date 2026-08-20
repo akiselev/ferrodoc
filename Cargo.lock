@@ -403,6 +403,8 @@ version = "0.2.0"
 dependencies = [
  "ferrodoc-core",
  "ferrodoc-engine-api",
+ "ferrodoc-engine-ocrs",
+ "ferrodoc-layout-rulebased",
  "ferrodoc-pdf",
  "ferrodoc-render",
  "ferrodoc-runtime",
