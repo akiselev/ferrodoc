@@ -46,7 +46,15 @@ fn doctor() -> Result<(), String> {
         "schemas/benchmark-report-v1.json",
         "schemas/benchmark-comparison-v1.json",
         "scripts/benchmark-smoke.sh",
+        "scripts/engine-qualification.sh",
         "docs/benchmarking.md",
+        "docs/engines/README.md",
+        "docs/engines/native-pdf.md",
+        "docs/engines/layout-rulebased.md",
+        "docs/engines/ocrs.md",
+        "docs/engines/tesseract.md",
+        "docs/engines/mock.md",
+        "docs/engines/command.md",
     ] {
         if !Path::new(required).is_file() {
             return Err(format!("required repository file {required:?} is missing"));
