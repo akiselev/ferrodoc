@@ -153,12 +153,24 @@ fn invalid_environment_and_engine_overrides_fail() {
 }
 
 #[test]
-fn hardware_preserves_unknown_memory() {
+fn hardware_reports_measurements_or_explicit_unknowns() {
     let output = run(&["hardware"]);
     assert!(output.status.success());
     let inventory: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(inventory["ram_total"]["status"], "unknown");
-    assert_eq!(inventory["ram_available"]["status"], "unknown");
+    for field in [
+        "logical_cpus",
+        "physical_cpus",
+        "ram_total",
+        "ram_available",
+    ] {
+        assert!(matches!(
+            inventory[field]["status"].as_str(),
+            Some("known" | "unknown")
+        ));
+    }
+    if inventory["ram_total"]["status"] == "known" {
+        assert_eq!(inventory["ram_source"]["status"], "known");
+    }
 }
 
 #[test]

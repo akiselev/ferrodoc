@@ -55,8 +55,11 @@ fn request(bytes: &[u8]) -> EngineRequest {
 fn inventory() -> HardwareInventory {
     HardwareInventory {
         logical_cpus: Estimate::Unknown,
+        physical_cpus: Estimate::Unknown,
+        cpu_source: Estimate::Unknown,
         ram_total: Estimate::Unknown,
         ram_available: Estimate::Unknown,
+        ram_source: Estimate::Unknown,
         devices: Vec::new(),
     }
 }

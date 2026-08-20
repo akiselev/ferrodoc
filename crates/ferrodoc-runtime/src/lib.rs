@@ -22,6 +22,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod hardware;
 mod process;
 
 pub use process::{PluginCommand, ProcessConfig, ProcessEngine};

@@ -1,7 +1,5 @@
 use std::{fs, path::Path};
 
-use ferrodoc_core::{Bytes, Estimate};
-use ferrodoc_engine_api::HardwareInventory;
 use ferrodoc_pdf::{PdfDocument, PdfLimits};
 use ferrodoc_render::render;
 use ferrodoc_runtime::{ConversionOptions, Converter};
@@ -62,7 +60,7 @@ pub fn run(command: Command) -> Result<(), CommandError> {
     match command {
         Command::Version => println!("ferrodoc {}", env!("CARGO_PKG_VERSION")),
         Command::Status => println!("Ferrodoc Phase 2 offline PDF vertical slice"),
-        Command::Hardware => print_json(&hardware_inventory())?,
+        Command::Hardware => print_json(&ferrodoc_runtime::hardware::inventory())?,
         Command::Inspect { input } => {
             let bytes = read(&input)?;
             let pdf = PdfDocument::from_bytes(bytes, PdfLimits::default())?;
@@ -124,16 +122,4 @@ fn print_json(value: &impl Serialize) -> Result<(), CommandError> {
     bytes.push(b'\n');
     output::write(&bytes, None)?;
     Ok(())
-}
-
-fn hardware_inventory() -> HardwareInventory {
-    HardwareInventory {
-        logical_cpus: std::thread::available_parallelism()
-            .ok()
-            .and_then(|count| u32::try_from(count.get()).ok())
-            .map_or(Estimate::Unknown, Estimate::Known),
-        ram_total: Estimate::<Bytes>::Unknown,
-        ram_available: Estimate::<Bytes>::Unknown,
-        devices: Vec::new(),
-    }
 }
