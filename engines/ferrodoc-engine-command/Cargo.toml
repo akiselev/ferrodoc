@@ -1,0 +1,17 @@
+[package]
+name = "ferrodoc-engine-command"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Experimental allowlisted no-shell command escape hatch for Ferrodoc"
+
+[dependencies]
+ferrodoc-core = { path = "../../crates/ferrodoc-core" }
+ferrodoc-engine-api = { path = "../../crates/ferrodoc-engine-api" }
+ferrodoc-ir = { path = "../../crates/ferrodoc-ir" }
+ferrodoc-plugin-sdk = { path = "../../crates/ferrodoc-plugin-sdk" }
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
