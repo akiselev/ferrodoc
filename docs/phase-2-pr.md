@@ -16,7 +16,7 @@ OCRS receives explicit model bytes and performs no acquisition. The optional CI 
 
 ## Development corpus evidence
 
-The corpus inventory under `/home/dev/research/lightbulb` contained 425 PDFs. Ferrodoc itself inspected and rasterized two representative inputs:
+The external Lightbulb corpus inventory contained 425 PDFs. Ferrodoc itself inspected and rasterized two representative inputs:
 
 - born-digital OSTI 4130843: 132,706 bytes, four pages, 2,255 native characters on page 1, deterministic 744 by 995 RGBA raster at 96 DPI;
 - image-only OSTI 7094593: 187,901 bytes, six pages, zero native characters on every page, deterministic 819 by 1,052 page-1 raster at 96 DPI.

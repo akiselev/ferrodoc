@@ -4,7 +4,7 @@ Ferrodoc protocol v1 carries the same `Engine` semantics used by embedded execut
 
 ## Stream and framing
 
-Host stdin and engine stdout are independent streams. Each begins exactly once with the eight bytes `FERRODOC`. Every subsequent item is a four-byte unsigned big-endian payload length followed by one CBOR value. The v1 hard maximum is 16 MiB, further reduced to the smaller maximum announced during negotiation. Zero and oversized lengths are rejected before payload allocation. Truncated, malformed, and trailing CBOR are errors.
+Host stdin and engine stdout are independent streams. Each begins exactly once with the eight bytes `FERRODOC`. Every subsequent item is a four-byte unsigned big-endian payload length followed by one CBOR value. The v1 hard maximum is 16 MiB, further reduced to the smaller maximum announced during negotiation. Zero and oversized inbound lengths are rejected before payload allocation; outbound encoding uses a bounded writer and stops before accumulating an oversized payload. Truncated, malformed, and trailing CBOR are errors.
 
 The host writes a framed `ClientHello` after its preamble. The engine writes its own preamble and framed `ServerHello`. Both advertise bounds; the newest overlapping version is selected. A mismatch reports both supported ranges. Unframed engine stdout fails the preamble and cannot be interpreted as a message. Engine diagnostics belong only on stderr, which the host drains continuously while retaining a bounded tail.
 
@@ -13,6 +13,10 @@ The host writes a framed `ClientHello` after its preamble. The engine writes its
 Every request and response has a version and correlation ID. IDs may appear only once per process session. The host registers an already approved blob range before execution, normalizing the child-visible range to start at zero. The child rejects duplicate tokens, digest mismatch, media-type mismatch, range overflow, and unknown release. It receives no host path. The host releases the token after execution.
 
 Health, estimate, execute, ping, cancellation acknowledgement, and shutdown have typed messages. Semantic engine failures remain structured `EngineError` values. Framing, negotiation, correlation, and child-lifecycle failures map to protocol errors. The host never automatically retries an in-flight semantic request. An explicit restart is allowed only within `ProcessConfig::maximum_restarts`.
+
+## Compatibility policy
+
+Within protocol v1, additive optional fields may be accepted when Serde compatibility permits them. Removing a field, changing a field's semantics/type, changing framing, or changing blob-scope rules requires protocol v2. Hosts and engines with no common version refuse the connection; they never guess a downgrade.
 
 ## Lifecycle bounds
 
