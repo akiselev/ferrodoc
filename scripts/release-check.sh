@@ -32,7 +32,7 @@ fi
 
 tar -xf "$archive" -C "$scratch"
 source_root="$scratch/ferrodoc-v0.2.0"
-if rg -n --glob '!scripts/release-check.sh' '/home/[^/]+/|/Users/[^/]+/|C:\\\\Users\\\\|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}' "$source_root"; then
+if rg -n --glob '!**/scripts/release-check.sh' '/home/[^/]+/|/Users/[^/]+/|C:\\\\Users\\\\|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}' "$source_root"; then
   echo "release archive contains a local path or secret marker" >&2
   exit 1
 fi
