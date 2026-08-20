@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     ffi::OsStr,
     path::Path,
-    sync::mpsc,
+    sync::{Mutex, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -75,6 +75,15 @@ impl TraceSink for Trace {
     fn event(&self, _code: &str, _fields: &BTreeMap<String, String>) {}
 }
 
+#[derive(Default)]
+struct RecordingTrace(Mutex<Vec<(String, BTreeMap<String, String>)>>);
+
+impl TraceSink for RecordingTrace {
+    fn event(&self, code: &str, fields: &BTreeMap<String, String>) {
+        self.0.lock().unwrap().push((code.into(), fields.clone()));
+    }
+}
+
 fn context<'a>(resolver: &'a Resolver, cancellation: CancellationToken) -> ExecutionContext<'a> {
     ExecutionContext {
         cancellation,
@@ -89,7 +98,13 @@ fn embedded_and_process_semantics_match() {
     let bytes = b"fixture".to_vec();
     let resolver = Resolver(bytes.clone());
     let request = request(&bytes);
-    let context = context(&resolver, CancellationToken::default());
+    let trace = RecordingTrace::default();
+    let context = ExecutionContext {
+        cancellation: CancellationToken::default(),
+        deadline: None,
+        blobs: &resolver,
+        trace: &trace,
+    };
     let mut embedded = MockEngine::new();
     let mut process = ProcessEngine::spawn(&command(None), config()).unwrap();
 
@@ -106,6 +121,9 @@ fn embedded_and_process_semantics_match() {
         embedded.execute(request.clone(), &context).unwrap(),
         process.execute(request, &context).unwrap()
     );
+    assert!(trace.0.lock().unwrap().iter().any(|(code, fields)| {
+        code == "engine.transport" && fields.get("mode").map(String::as_str) == Some("process")
+    }));
     process.shutdown().unwrap();
 }
 
@@ -204,4 +222,25 @@ fn discovery_rejects_relative_and_symlink_escape_paths() {
         PluginCommand::discover_trusted(&[trusted.path().to_owned()], OsStr::new("../outside"))
             .is_err()
     );
+
+    #[cfg(unix)]
+    {
+        use std::{
+            fs,
+            os::unix::fs::{PermissionsExt, symlink},
+        };
+
+        let outside = tempfile::tempdir().unwrap();
+        let executable = outside.path().join("outside-engine");
+        fs::write(&executable, b"#!/bin/sh\nexit 0\n").unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+        symlink(&executable, trusted.path().join("linked-engine")).unwrap();
+        assert!(
+            PluginCommand::discover_trusted(
+                &[trusted.path().to_owned()],
+                OsStr::new("linked-engine")
+            )
+            .is_err()
+        );
+    }
 }

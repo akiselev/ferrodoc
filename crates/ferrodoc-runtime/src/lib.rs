@@ -145,6 +145,17 @@ pub enum PlanDecision {
     Unavailable,
 }
 
+/// Engine transport selected for a stage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+#[schemars(rename_all = "snake_case")]
+pub enum ExecutionMode {
+    /// Direct in-process trait call.
+    Embedded,
+    /// Framed isolated child process.
+    Process,
+}
+
 /// One input-specific stage decision.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct PlannedStage {
@@ -154,6 +165,8 @@ pub struct PlannedStage {
     pub stage: String,
     /// Selection result.
     pub decision: PlanDecision,
+    /// Selected engine transport, absent for non-engine stages.
+    pub execution: Option<ExecutionMode>,
     /// Deterministic explanation.
     pub explanation: String,
 }
@@ -176,6 +189,8 @@ pub struct TraceEvent {
     pub page_index: Option<u32>,
     /// Stable event code.
     pub code: String,
+    /// Engine transport used by the completed event.
+    pub execution: Option<ExecutionMode>,
     /// Stable explanatory text.
     pub detail: String,
 }
@@ -247,6 +262,7 @@ impl Converter {
         let mut trace = vec![TraceEvent {
             page_index: None,
             code: "document.inspected".into(),
+            execution: None,
             detail: format!(
                 "{} pages accepted by PDF limits",
                 pdf.inspection().pages.len()
@@ -273,6 +289,7 @@ impl Converter {
             trace.push(TraceEvent {
                 page_index: Some(page_index),
                 code: "native.quality".into(),
+                execution: None,
                 detail: format!(
                     "{native_characters} non-whitespace characters; threshold {}",
                     self.options.native_character_threshold
@@ -343,12 +360,14 @@ impl Converter {
                 trace.push(TraceEvent {
                     page_index: Some(page_index),
                     code: "ocr.executed".into(),
+                    execution: Some(ExecutionMode::Embedded),
                     detail: "native evidence was absent or below threshold".into(),
                 });
             } else {
                 trace.push(TraceEvent {
                     page_index: Some(page_index),
                     code: "ocr.rejected".into(),
+                    execution: Some(ExecutionMode::Embedded),
                     detail: "native evidence met the quality threshold".into(),
                 });
             }
@@ -384,6 +403,7 @@ impl Converter {
             trace.push(TraceEvent {
                 page_index: Some(page_index),
                 code: "evidence.reconciled".into(),
+                execution: Some(ExecutionMode::Embedded),
                 detail: format!("{} selected regions", regions.len()),
             });
             pages.push(Page {
@@ -417,6 +437,7 @@ fn plan_for(pdf: &PdfDocument, options: &ConversionOptions, ocr_ready: bool) -> 
         page_index: None,
         stage: "pdf.inspect".into(),
         decision: PlanDecision::Selected,
+        execution: None,
         explanation: "bounded parsing is required for this PDF".into(),
     }];
     for page in &pdf.inspection().pages {
@@ -429,7 +450,23 @@ fn plan_for(pdf: &PdfDocument, options: &ConversionOptions, ocr_ready: bool) -> 
             page_index: Some(page.index),
             stage: "native.extract".into(),
             decision: PlanDecision::Selected,
+            execution: None,
             explanation: format!("recovered {native_characters} non-whitespace characters"),
+        });
+        stages.push(PlannedStage {
+            page_index: Some(page.index),
+            stage: "layout.rulebased".into(),
+            decision: if native_characters == 0 {
+                PlanDecision::Rejected
+            } else {
+                PlanDecision::Selected
+            },
+            execution: Some(ExecutionMode::Embedded),
+            explanation: if native_characters == 0 {
+                "no native text is available for rule-based segmentation".into()
+            } else {
+                "native text will be segmented deterministically".into()
+            },
         });
         let needs_ocr = native_characters < options.native_character_threshold as usize;
         stages.push(PlannedStage {
@@ -444,6 +481,7 @@ fn plan_for(pdf: &PdfDocument, options: &ConversionOptions, ocr_ready: bool) -> 
             } else {
                 PlanDecision::Rejected
             },
+            execution: Some(ExecutionMode::Embedded),
             explanation: if needs_ocr {
                 format!(
                     "native evidence is below the {} character threshold{}",

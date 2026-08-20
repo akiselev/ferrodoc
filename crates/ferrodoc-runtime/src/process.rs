@@ -42,8 +42,10 @@ impl PluginCommand {
         let canonical = program
             .canonicalize()
             .map_err(|error| protocol_error(format!("resolve plugin executable: {error}")))?;
-        if !canonical.is_file() {
-            return Err(protocol_error("plugin executable is not a regular file"));
+        if !is_executable_file(&canonical) {
+            return Err(protocol_error(
+                "plugin executable is not an executable regular file",
+            ));
         }
         Ok(Self {
             program: canonical,
@@ -66,7 +68,9 @@ impl PluginCommand {
             let Ok(canonical_candidate) = candidate.canonicalize() else {
                 continue;
             };
-            if canonical_candidate.starts_with(&canonical_root) && canonical_candidate.is_file() {
+            if canonical_candidate.starts_with(&canonical_root)
+                && is_executable_file(&canonical_candidate)
+            {
                 return Self::explicit(canonical_candidate);
             }
         }
@@ -423,6 +427,13 @@ impl Engine for ProcessEngine {
         context: &ExecutionContext<'_>,
     ) -> Result<EngineResponse, EngineError> {
         context.checkpoint()?;
+        context.trace.event(
+            "engine.transport",
+            &BTreeMap::from([
+                ("engine_id".into(), self.descriptor.id.clone()),
+                ("mode".into(), "process".into()),
+            ]),
+        );
         let bytes = context.blobs.resolve(&request.input)?;
         if bytes.is_empty() {
             return Err(EngineError::new(
@@ -532,4 +543,22 @@ fn terminate_child(child: &mut Child) {
 
 fn protocol_error(message: impl Into<String>) -> EngineError {
     EngineError::new(EngineErrorCategory::Protocol, false, message)
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    let Ok(metadata) = path.metadata() else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
