@@ -22,6 +22,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod cache;
 pub mod hardware;
 pub mod model_store;
 pub mod planner;
