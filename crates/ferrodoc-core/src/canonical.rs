@@ -413,6 +413,7 @@ mod tests {
 
     #[test]
     fn capability_representations_are_identical() {
+        let schema = serde_json::to_string(&schemars::schema_for!(Capability)).unwrap();
         for capability in [
             Capability::DocumentOpen,
             Capability::PageRender,
@@ -431,6 +432,7 @@ mod tests {
                 serde_json::to_string(&capability).unwrap(),
                 format!("\"{text}\"")
             );
+            assert!(schema.contains(&format!("\"{text}\"")));
         }
         assert!("ocr".parse::<Capability>().is_err());
         assert_eq!(Capability::parse_cli("ocr").unwrap(), Capability::OcrPage);

@@ -2,7 +2,13 @@
 resolver = "2"
 members = [
   "crates/ferrodoc-core",
+  "crates/ferrodoc-engine-api",
   "crates/ferrodoc-ir",
+  "crates/ferrodoc-pdf",
+  "crates/ferrodoc-protocol",
+  "crates/ferrodoc-render",
+  "crates/ferrodoc-runtime",
+  "crates/ferrodoc-cli",
 ]
 default-members = ["crates/ferrodoc-core"]
 

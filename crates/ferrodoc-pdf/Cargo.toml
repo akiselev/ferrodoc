@@ -1,0 +1,12 @@
+[package]
+name = "ferrodoc-pdf"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ferrodoc-core = { path = "../ferrodoc-core" }
+schemars.workspace = true
+serde.workspace = true
+thiserror.workspace = true

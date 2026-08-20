@@ -96,6 +96,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
+name = "ferrodoc"
+version = "0.2.0"
+
+[[package]]
 name = "ferrodoc-core"
 version = "0.2.0"
 dependencies = [
@@ -110,6 +114,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ferrodoc-engine-api"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-core",
+ "ferrodoc-ir",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "ferrodoc-ir"
 version = "0.2.0"
 dependencies = [
@@ -117,6 +133,46 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "ferrodoc-pdf"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-core",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "ferrodoc-protocol"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-core",
+ "ferrodoc-engine-api",
+ "schemars",
+ "serde",
+]
+
+[[package]]
+name = "ferrodoc-render"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-ir",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "ferrodoc-runtime"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-core",
+ "ferrodoc-engine-api",
  "thiserror",
 ]
 
