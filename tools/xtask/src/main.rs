@@ -47,6 +47,7 @@ fn doctor() -> Result<(), String> {
         "schemas/benchmark-comparison-v1.json",
         "scripts/benchmark-smoke.sh",
         "scripts/engine-qualification.sh",
+        "scripts/routing-smoke.sh",
         "docs/benchmarking.md",
         "docs/engines/README.md",
         "docs/engines/native-pdf.md",
@@ -55,6 +56,13 @@ fn doctor() -> Result<(), String> {
         "docs/engines/tesseract.md",
         "docs/engines/mock.md",
         "docs/engines/command.md",
+        "docs/research.md",
+        "benchmarks/routing/dataset.json",
+        "benchmarks/routing/experiment-spec.json",
+        "schemas/routing-dataset-v1.json",
+        "schemas/router-model-v1.json",
+        "schemas/experiment-spec-v1.json",
+        "schemas/experiment-ledger-v1.json",
     ] {
         if !Path::new(required).is_file() {
             return Err(format!("required repository file {required:?} is missing"));

@@ -28,8 +28,11 @@ jobs:
       - run: cargo run --locked -p ferrodoc-foundry --example export_foundry_schemas
       - run: cargo run --locked -p ferrodoc-bench --example export_benchmark_schemas
       - run: cargo run --locked -p ferrodoc-bench --example export_real_regression
+      - run: cargo run --locked -p ferrodoc-router --example export_router_schemas
+      - run: cargo run --locked -p ferrodoc-research --example export_research_schemas
       - run: ./scripts/smoke.sh
       - run: ./scripts/benchmark-smoke.sh
+      - run: ./scripts/routing-smoke.sh
       - name: Qualify default native portfolio on fixed real corpus
         run: |
           cargo build --locked -p ferrodoc

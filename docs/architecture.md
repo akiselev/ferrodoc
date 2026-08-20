@@ -20,6 +20,8 @@ ferrodoc-core
 ├── ferrodoc-pdf
 ├── ferrodoc-foundry
 ├── ferrodoc-bench
+├── ferrodoc-router
+├── ferrodoc-research
 └── ferrodoc CLI
 ```
 
@@ -35,7 +37,9 @@ ferrodoc-core
 - `ferrodoc-render` emits deterministic Markdown, semantic HTML, and canonical full-evidence JSON.
 - `ferrodoc-foundry` owns deterministic synthetic PDFs, semantic truth, licensed asset declarations, non-overlapping partitions, and content-bound corpus manifests.
 - `ferrodoc-bench` owns prediction/report schemas, complete case accounting, quality metrics, measurement evidence, and policy-specific Pareto comparison. It verifies corpus bytes before scoring.
-- `ferrodoc` exposes conversion, inspection, planning, trace/resource explanation, hardware reporting, model-store operations, and categorized plugin diagnostics.
+- `ferrodoc-router` owns versioned pre-execution features, trace/report lineage, document-family partition checks, deterministic baselines, a small learned stump, and the hard-policy guard. A learned recommendation can select only a candidate already admitted by the planner.
+- `ferrodoc-research` owns immutable experiment specifications, exact command/environment provenance, finite budgets, resumable trial state, protected truth/evaluator digests, and multidimensional Pareto retention. It evaluates existing reports internally and never executes a mutation command.
+- `ferrodoc` exposes conversion, inspection, planning, trace/resource explanation, hardware reporting, model-store operations, categorized plugin diagnostics, router inspection/training/evaluation/comparison, and research-ledger operation.
 
 The runtime-agnostic contract crates contain no OCR, PDF parser, GPU, model runtime, HTTP client, async runtime, or native binary download feature. The default application is pure Rust and has no build-time model or binary download. `scripts/check-boundaries.sh` enforces the contract boundary in CI.
 
@@ -58,3 +62,4 @@ Candidate planning rejects unknown hard estimates by default and never invents a
 See [ADR 0001](adr/0001-consolidate-runtime.md) and [ADR 0002](adr/0002-transport-independent-engines.md).
 Benchmark integrity and held-out governance are specified in [Benchmarking and corpus governance](benchmarking.md).
 Engine capabilities, estimates, dependencies, licenses, isolation, and benchmark status are specified in the [qualified engine portfolio](engines/README.md).
+Routing data lineage and experiment governance are specified in [Routing and research](research.md).
