@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-Ferrodoc is a document extraction compiler. It acquires immutable input, collects deterministic and learned evidence, reconciles without destroying hypotheses, and renders a selected view. Phase 2 implements the embedded CPU vertical slice; policy-rich planning and isolated process execution remain later phases.
+Ferrodoc is a document extraction compiler. It acquires immutable input, collects deterministic and learned evidence, reconciles without destroying hypotheses, and renders a selected view. The current runtime supports embedded and isolated process execution, hard resource admission, leases, and deterministic stage caching.
 
 ## Package boundaries
 
@@ -24,11 +24,11 @@ ferrodoc-core
 - `ferrodoc-engine-api` owns blocking engine semantics, descriptors, health, estimates, requests, responses, cancellation, deadlines, and errors.
 - `ferrodoc-protocol` owns versioned process message schemas and bounded length-prefixed CBOR framing.
 - `ferrodoc-plugin-sdk` is the thin stdin/stdout server wrapper; protocol stdout never carries diagnostics.
-- `ferrodoc-runtime` owns embedded registration, the bounded isolated process host, native-quality routing, evidence append, deterministic reconciliation, plans, and traces. Scheduling, caching, and model storage remain later modules.
+- `ferrodoc-runtime` owns embedded registration, the bounded isolated process host, content-addressed model views, sourced hardware inventory, explainable planning, scheduler leases, stage caching, native-quality routing, evidence append, deterministic reconciliation, plans, and traces.
 - `ferrodoc-pdf` performs bounded inspection/native extraction with lopdf and deterministic pure-Rust rasterization with Hayro.
 - `ferrodoc-layout-rulebased` and `ferrodoc-engine-ocrs` implement the common engine trait. OCRS model bytes are injected explicitly and never acquired by the engine.
 - `ferrodoc-render` emits deterministic Markdown, semantic HTML, and canonical full-evidence JSON.
-- `ferrodoc` exposes conversion, inspection, planning, trace explanation, and conservative hardware reporting.
+- `ferrodoc` exposes conversion, inspection, planning, trace/resource explanation, hardware reporting, model-store operations, and categorized plugin diagnostics.
 
 The runtime-agnostic contract crates contain no OCR, PDF parser, GPU, model runtime, HTTP client, async runtime, or native binary download feature. The default application is pure Rust and has no build-time model or binary download. `scripts/check-boundaries.sh` enforces the contract boundary in CI.
 
@@ -45,5 +45,7 @@ PDF input is hostile. `ferrodoc-pdf` applies byte limits before parsing and defi
 ## Execution model
 
 The `Engine` trait is synchronous and `Send`. Blocking native libraries therefore do not force Tokio or another runtime into semantic crates. An orchestrator may call an engine through a dedicated worker or process while supplying cooperative cancellation, a deadline, scoped blob resolution, and structured tracing.
+
+Candidate planning rejects unknown hard estimates by default and never invents a fallback. The scheduler grants CPU-worker, host-RAM, and per-device leases; an explicitly guarded unknown estimate reserves the entire relevant budget. Cache entries are published atomically and keyed only by semantic identity. Hardware measurements and cache/lease outcomes remain outside canonical document identity.
 
 See [ADR 0001](adr/0001-consolidate-runtime.md) and [ADR 0002](adr/0002-transport-independent-engines.md).

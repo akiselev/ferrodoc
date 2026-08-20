@@ -19,6 +19,7 @@ jobs:
       - run: cargo run --locked -p xtask -- doctor
       - run: cargo fmt --all -- --check
       - run: cargo check --workspace --all-targets --locked
+      - run: cargo check --locked -p ferrodoc-runtime --features nvml
       - run: cargo test --workspace --locked
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo run --locked -p ferrodoc-ir --example export_snapshots
@@ -67,6 +68,15 @@ jobs:
         env:
           FERRODOC_TEST_OCRS_MODEL_DIR: ${{ runner.temp }}/ocrs-models
         run: cargo test --locked -p ferrodoc --test cli model_backed_scan_and_hybrid_when_models_are_provided -- --exact
+      - name: Verify content-addressed model installation
+        run: |
+          cargo run --locked -p ferrodoc -- models pull \
+            --manifest models/ocrs-cpu.json \
+            --source "$RUNNER_TEMP/ocrs-models" \
+            --store "$RUNNER_TEMP/ferrodoc-model-store" \
+            --accept
+          cargo run --locked -p ferrodoc -- models verify \
+            --store "$RUNNER_TEMP/ferrodoc-model-store"
       - name: Test OCRS embedded/process parity
         env:
           FERRODOC_TEST_OCRS_MODEL_DIR: ${{ runner.temp }}/ocrs-models

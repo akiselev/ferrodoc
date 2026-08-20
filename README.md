@@ -4,7 +4,7 @@ Ferrodoc is a pre-release Rust project for offline, evidence-preserving document
 
 ## Current status
 
-Repository recovery, foundations, and the Phase 2 vertical slice are implemented. Born-digital PDFs convert without models. Scanned and hybrid PDFs use the pure-Rust OCRS engine when an explicit verified model pair is supplied. Process isolation, the model store, resource planner, foundry, and benchmark runner enter in later phases.
+Repository recovery through the Phase 4 resource runtime is implemented. Born-digital PDFs convert without models. Scanned and hybrid PDFs use the pure-Rust OCRS engine when an explicit verified model pair is supplied. Engines can run embedded or over the bounded process protocol; conversion applies explainable hard constraints, scheduler leases, and an optional deterministic stage cache. The foundry and benchmark runner enter in later phases.
 
 The implementation sequence and acceptance gates are defined in [PLAN.md](PLAN.md). Current work is summarized in [STATUS.md](STATUS.md), and the discarded source payload is documented in [docs/recovery-inventory.md](docs/recovery-inventory.md).
 
@@ -35,19 +35,23 @@ cargo run --locked -p ferrodoc -- plan fixtures/pdf/born-digital.pdf
 cargo run --locked -p ferrodoc -- convert fixtures/pdf/born-digital.pdf --output document.md
 cargo run --locked -p ferrodoc -- explain fixtures/pdf/born-digital.pdf
 cargo run --locked -p ferrodoc -- hardware
+cargo run --locked -p ferrodoc -- plugins doctor
+cargo run --locked -p ferrodoc -- models list --store .ferrodoc/models
 ```
 
 `convert` defaults to Markdown; `--format html` and `--format json` select semantic HTML or the complete evidence graph. Output files are committed with a temporary file and atomic rename. Malformed, encrypted, missing, unsupported, and unavailable-model failures use nonzero exit status and a JSON error envelope on stderr.
 
-OCRS model acquisition is deliberately external until the content-addressed model store lands in Phase 4. To test scanned input, place the official OCRS `text-detection.rten` and `text-recognition.rten` files in one directory and pass `--ocrs-model-dir DIR`. Ferrodoc never downloads them during build or conversion. The optional model-backed CI job verifies their SHA-256 digests before use.
+Ferrodoc never downloads models during build or conversion. The checked-in [OCRS manifest](models/ocrs-cpu.json) records exact sizes, SHA-256 digests, source, revision, license, and required acceptance. `models pull` installs an already acquired pair atomically from a local directory; see [models/README.md](models/README.md). Conversion can still load that verified logical directory with `--ocrs-model-dir DIR`.
+
+`plan` accepts profiles plus hard `--max-ram`, `--max-vram`, `--max-cost-microusd`, and `--deadline-ms` constraints. Unknown values fail hard limits unless `--allow-unknown-estimates` explicitly requests guarded execution. `--cache-dir DIR` enables atomic stage caching from input, model, engine, schema, page, seed, and normalized-parameter identity.
 
 ## Design invariants
 
 - Native PDF evidence is not overwritten by OCR evidence.
 - Runtime-agnostic contracts do not depend on model, OCR, GPU, HTTP, or PDF runtimes.
-- Unknown resource use will remain explicit rather than being reported as zero.
+- Unknown resource use is explicit rather than being reported as zero, and does not satisfy hard limits by default.
 - The default born-digital path is offline-capable and CPU-capable.
-- Expensive work will be cacheable from deterministic content and configuration identity.
-- Plugin stdout will be reserved for framed protocol traffic.
+- Deterministic expensive work is cacheable from complete semantic identity.
+- Plugin stdout is reserved for framed protocol traffic.
 
 Ferrodoc is dual-licensed under MIT or Apache-2.0.
