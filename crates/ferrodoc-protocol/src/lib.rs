@@ -332,6 +332,20 @@ mod tests {
     }
 
     #[test]
+    fn unknown_message_type_is_rejected() {
+        let unknown = ciborium::value::Value::Map(vec![(
+            ciborium::value::Value::Text("type".into()),
+            ciborium::value::Value::Text("unknown_message".into()),
+        )]);
+        let mut framed = Vec::new();
+        write_frame(&mut framed, &unknown, 1024).unwrap();
+        assert!(matches!(
+            read_frame::<HostMessage>(&mut Cursor::new(framed), 1024),
+            Err(ProtocolError::MalformedCbor(_))
+        ));
+    }
+
+    #[test]
     fn unframed_output_cannot_pass_the_preamble() {
         assert!(matches!(
             read_preamble(&mut Cursor::new(b"diagnostic text")),
