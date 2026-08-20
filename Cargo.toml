@@ -24,6 +24,7 @@ authors = ["Ferrodoc contributors"]
 
 [workspace.dependencies]
 chrono = { version = "0.4", features = ["serde"] }
+ciborium = "0.2"
 hex = "0.4"
 hayro = "0.7.0"
 lopdf = { version = "0.36.0", default-features = false }

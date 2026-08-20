@@ -6,7 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+ciborium.workspace = true
 ferrodoc-core = { path = "../ferrodoc-core" }
 ferrodoc-engine-api = { path = "../ferrodoc-engine-api" }
 schemars.workspace = true
 serde.workspace = true
+thiserror.workspace = true
