@@ -311,6 +311,8 @@ impl ModelManifest {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
 
     #[test]
@@ -329,5 +331,17 @@ mod tests {
     #[test]
     fn relative_path_deserialization_validates() {
         assert!(serde_json::from_str::<RelativePath>("\"../secret\"").is_err());
+    }
+
+    proptest! {
+        #[test]
+        fn normalized_relative_paths_round_trip(
+            segments in proptest::collection::vec("[a-z][a-z0-9_-]{0,11}", 1..8)
+        ) {
+            let text = segments.join("/");
+            let path = RelativePath::new(&text).unwrap();
+            let json = serde_json::to_vec(&path).unwrap();
+            prop_assert_eq!(serde_json::from_slice::<RelativePath>(&json).unwrap(), path);
+        }
     }
 }

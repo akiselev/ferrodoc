@@ -301,6 +301,8 @@ fn parse_scaled_u64(number: &str, multiplier: u64, kind: &'static str) -> Result
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
 
     #[test]
@@ -332,5 +334,13 @@ mod tests {
     fn probability_deserialization_validates() {
         assert!(serde_json::from_str::<Probability>("0.5").is_ok());
         assert!(serde_json::from_str::<Probability>("1.1").is_err());
+    }
+
+    proptest! {
+        #[test]
+        fn arbitrary_byte_counts_display_round_trip(value in any::<u64>()) {
+            let bytes = Bytes::new(value);
+            prop_assert_eq!(bytes.to_string().parse::<Bytes>().unwrap(), bytes);
+        }
     }
 }

@@ -116,6 +116,8 @@ impl JsonSchema for Sha256Digest {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
 
     #[test]
@@ -141,5 +143,13 @@ mod tests {
             Sha256Digest::of_file(path).unwrap(),
             Sha256Digest::of_bytes(b"ferrodoc")
         );
+    }
+
+    proptest! {
+        #[test]
+        fn arbitrary_digest_text_round_trips(bytes in proptest::collection::vec(any::<u8>(), 0..4096)) {
+            let digest = Sha256Digest::of_bytes(&bytes);
+            prop_assert_eq!(digest.to_string().parse::<Sha256Digest>().unwrap(), digest);
+        }
     }
 }

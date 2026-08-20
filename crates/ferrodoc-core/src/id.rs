@@ -102,6 +102,8 @@ stable_id!(RequestId, "request", "Stable request identity.");
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
 
     #[test]
@@ -113,5 +115,13 @@ mod tests {
         assert_ne!(first.as_str(), page.as_str());
         assert_eq!(first.to_string().parse::<DocumentId>().unwrap(), first);
         assert!(first.to_string().parse::<PageId>().is_err());
+    }
+
+    proptest! {
+        #[test]
+        fn document_ids_round_trip(part in proptest::collection::vec(any::<u8>(), 0..4096)) {
+            let id = DocumentId::derive(&[&part]);
+            prop_assert_eq!(id.to_string().parse::<DocumentId>().unwrap(), id);
+        }
     }
 }

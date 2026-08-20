@@ -150,6 +150,8 @@ pub struct ScopedBlob {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
 
     #[test]
@@ -163,6 +165,16 @@ mod tests {
     fn blob_ids_cannot_encode_paths() {
         for input in ["../secret", "/etc/passwd", "dir/file", "dir\\file"] {
             assert!(BlobId::new(input).is_err());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn accepted_ranges_have_checked_ends(offset in any::<u64>(), len in 1_u64..) {
+            match offset.checked_add(len) {
+                Some(end) => prop_assert_eq!(BlobRange::new(offset, len).unwrap().end(), end),
+                None => prop_assert!(BlobRange::new(offset, len).is_err()),
+            }
         }
     }
 }
