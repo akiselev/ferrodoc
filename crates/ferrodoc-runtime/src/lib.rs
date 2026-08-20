@@ -22,6 +22,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod process;
+
+pub use process::{PluginCommand, ProcessConfig, ProcessEngine};
+
 /// Embedded runtime failure.
 #[derive(Debug, Error)]
 pub enum RuntimeError {
@@ -854,7 +858,7 @@ mod tests {
             })
         }
         fn estimate(
-            &self,
+            &mut self,
             _request: &EngineRequest,
             _inventory: &HardwareInventory,
         ) -> Result<Vec<EngineCandidate>, EngineError> {

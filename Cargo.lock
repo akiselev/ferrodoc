@@ -404,6 +404,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ferrodoc-engine-mock"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-core",
+ "ferrodoc-engine-api",
+ "ferrodoc-ir",
+ "ferrodoc-plugin-sdk",
+ "ferrodoc-protocol",
+ "ferrodoc-runtime",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "ferrodoc-engine-ocrs"
 version = "0.2.0"
 dependencies = [
@@ -492,6 +506,7 @@ dependencies = [
  "ferrodoc-ir",
  "ferrodoc-layout-rulebased",
  "ferrodoc-pdf",
+ "ferrodoc-protocol",
  "schemars",
  "serde",
  "serde_json",

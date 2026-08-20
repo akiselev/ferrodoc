@@ -1,0 +1,20 @@
+[package]
+name = "ferrodoc-engine-mock"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Deterministic conformance and fault-injection engine for Ferrodoc"
+
+[dependencies]
+ferrodoc-core = { path = "../../crates/ferrodoc-core" }
+ferrodoc-engine-api = { path = "../../crates/ferrodoc-engine-api" }
+ferrodoc-ir = { path = "../../crates/ferrodoc-ir" }
+ferrodoc-plugin-sdk = { path = "../../crates/ferrodoc-plugin-sdk" }
+ferrodoc-protocol = { path = "../../crates/ferrodoc-protocol" }
+serde_json.workspace = true
+
+[dev-dependencies]
+ferrodoc-runtime = { path = "../../crates/ferrodoc-runtime" }
+tempfile.workspace = true

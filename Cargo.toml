@@ -12,6 +12,7 @@ members = [
   "crates/ferrodoc-cli",
   "engines/ferrodoc-layout-rulebased",
   "engines/ferrodoc-engine-ocrs",
+  "engines/ferrodoc-engine-mock",
   "tools/xtask",
 ]
 default-members = ["crates/ferrodoc-core"]

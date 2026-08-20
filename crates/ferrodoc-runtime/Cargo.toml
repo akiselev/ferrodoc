@@ -12,6 +12,7 @@ ferrodoc-engine-ocrs = { path = "../../engines/ferrodoc-engine-ocrs" }
 ferrodoc-ir = { path = "../ferrodoc-ir" }
 ferrodoc-layout-rulebased = { path = "../../engines/ferrodoc-layout-rulebased" }
 ferrodoc-pdf = { path = "../ferrodoc-pdf" }
+ferrodoc-protocol = { path = "../ferrodoc-protocol" }
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
