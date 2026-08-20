@@ -30,4 +30,5 @@ uuid.workspace = true
 
 [dev-dependencies]
 ferrodoc-core = { path = "../ferrodoc-core" }
+ferrodoc-engine-command = { path = "../../engines/ferrodoc-engine-command" }
 tempfile.workspace = true

@@ -600,6 +600,7 @@ version = "0.2.0"
 dependencies = [
  "ferrodoc-core",
  "ferrodoc-engine-api",
+ "ferrodoc-engine-command",
  "ferrodoc-engine-ocrs",
  "ferrodoc-engine-tesseract",
  "ferrodoc-ir",

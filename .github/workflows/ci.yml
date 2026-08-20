@@ -53,6 +53,13 @@ jobs:
           FERRODOC_TEST_LAYOUT_BINARY="$target_dir/debug/ferrodoc-layout-rulebased" \
             cargo test --locked -p ferrodoc-runtime --test process_engines \
               layout_wrapper_matches_embedded_when_binary_is_provided -- --exact
+      - name: Test experimental command embedded/process parity
+        run: |
+          cargo build --locked -p ferrodoc-engine-command --bin ferrodoc-engine-command
+          target_dir=$(cargo metadata --locked --format-version 1 --no-deps | jq -r .target_directory)
+          FERRODOC_TEST_COMMAND_BINARY="$target_dir/debug/ferrodoc-engine-command" \
+            cargo test --locked -p ferrodoc-runtime --test process_engines \
+              experimental_command_wrapper_matches_embedded_without_a_shell -- --exact
 
   vertical-slice-ocrs:
     runs-on: ubuntu-latest

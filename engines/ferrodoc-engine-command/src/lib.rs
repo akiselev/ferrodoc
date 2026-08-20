@@ -209,7 +209,7 @@ impl Engine for CommandEngine {
                 quality: Estimate::Unknown,
                 source: Estimate::Known(EstimateSource {
                     confidence: EstimateConfidence::Conservative,
-                    method: "trusted command configuration hard envelope".into(),
+                    method: "trusted command configuration conservative envelope".into(),
                 }),
             },
         }])
