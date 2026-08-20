@@ -10,6 +10,7 @@ pub struct Configuration {
     pub input: PathBuf,
     pub model_dir: Option<PathBuf>,
     pub options: ConversionOptions,
+    pub cache_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Error)]
@@ -33,6 +34,7 @@ impl Configuration {
             .map(|value| parse_u32("FERRODOC_OCR_DPI", value))
             .transpose()?;
         let env_model_dir = optional_env("FERRODOC_OCRS_MODEL_DIR")?.map(PathBuf::from);
+        let env_cache_dir = optional_env("FERRODOC_CACHE_DIR")?.map(PathBuf::from);
         let engine = arguments
             .ocr_engine
             .or(optional_env("FERRODOC_OCR_ENGINE")?)
@@ -67,6 +69,7 @@ impl Configuration {
             input: arguments.input,
             model_dir: arguments.model_dir.or(env_model_dir),
             options,
+            cache_dir: arguments.cache_dir.or(env_cache_dir),
         })
     }
 }

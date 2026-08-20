@@ -255,6 +255,10 @@ impl StageCache {
     fn staging_dir(&self) -> PathBuf {
         self.root.join("staging")
     }
+
+    pub(crate) fn root_path_for_error(&self) -> PathBuf {
+        self.root.clone()
+    }
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CacheError> {

@@ -303,8 +303,61 @@ fn explain_reports_leases_cache_decisions_and_measurement_state() {
     assert!(output.status.success());
     let explanation: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert!(explanation["leases"].is_array());
-    assert_eq!(explanation["cache_decisions"]["status"], "not_configured");
-    assert_eq!(explanation["measurements"]["status"], "unknown");
+    assert_eq!(
+        explanation["cache_decisions"][0]["decision"],
+        "not_configured"
+    );
+    assert!(explanation["measurements"][0]["measurement"].is_object());
+}
+
+#[test]
+fn configured_stage_cache_changes_miss_to_verified_hit() {
+    let directory = tempfile::tempdir().unwrap();
+    let run_explain = || {
+        Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+            .args(["explain", "--cache-dir"])
+            .arg(directory.path())
+            .arg(fixture("born-digital.pdf"))
+            .output()
+            .unwrap()
+    };
+    let first = run_explain();
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let first: serde_json::Value = serde_json::from_slice(&first.stdout).unwrap();
+    assert_eq!(first["cache_decisions"][0]["decision"], "miss");
+    assert_eq!(first["leases"].as_array().unwrap().len(), 1);
+
+    let second = run_explain();
+    assert!(
+        second.status.success(),
+        "{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    let second: serde_json::Value = serde_json::from_slice(&second.stdout).unwrap();
+    assert_eq!(second["cache_decisions"][0]["decision"], "hit");
+    assert!(second["leases"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn conversion_rejects_a_hard_ram_budget_before_engine_execution() {
+    let output = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
+        .args(["convert", "--max-ram", "1 MiB"])
+        .arg(fixture("born-digital.pdf"))
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["category"], "runtime");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("RamBudgetExceeded")
+    );
 }
 
 #[test]

@@ -1,12 +1,15 @@
 //! Embedded runtime and deterministic Phase 2 conversion pipeline.
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    time::{Duration, Instant},
+};
 
 use ferrodoc_core::{
     ArtifactId, BlobId, BlobRange, Bytes, CURRENT_SCHEMA_VERSION, Capability, CoordinateSpace,
-    CoordinateTransform, DeterministicProvenance, DocumentId, EvidenceId, LayerId, MediaType,
-    MicroUsd, Millis, ModelId, PageId, PageRect, Profile, Rect, RegionId, RequestId, ScopedBlob,
-    Sha256Digest, Stage, Unit,
+    CoordinateTransform, DeterministicProvenance, DeviceId, DeviceKind, DocumentId, Estimate,
+    EvidenceId, LayerId, MediaType, MicroUsd, Millis, ModelId, PageId, PageRect, Profile, Rect,
+    RegionId, RequestId, ResourceEstimate, ScopedBlob, Sha256Digest, Stage, Unit,
 };
 use ferrodoc_engine_api::{
     BlobResolver, CancellationToken, Engine, EngineDescriptor, EngineError, EngineErrorCategory,
@@ -58,6 +61,20 @@ pub enum RuntimeError {
         /// Page which requires OCR.
         page_index: u32,
     },
+    /// Every enumerated candidate was rejected by hard planner constraints.
+    #[error("no admissible candidate for {capability}: {explanation}")]
+    NoCandidate {
+        /// Required capability.
+        capability: Capability,
+        /// Stable rejection summary.
+        explanation: String,
+    },
+    /// Stage cache failed verification or I/O.
+    #[error(transparent)]
+    Cache(#[from] cache::CacheError),
+    /// Scheduler admission or observation failed.
+    #[error(transparent)]
+    Scheduler(#[from] scheduler::SchedulerError),
 }
 
 /// Explicit registry of embedded engine implementations.
@@ -237,6 +254,49 @@ pub struct ConversionResult {
     pub plan: ConversionPlan,
     /// Completed deterministic events.
     pub trace: ConversionTrace,
+    /// Resource leases, cache decisions, and measurements outside canonical IR identity.
+    pub resources: ResourceExecutionTrace,
+}
+
+/// Cache outcome for one expensive stage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+#[schemars(rename_all = "snake_case")]
+pub enum CacheDecision {
+    /// No cache directory was configured.
+    NotConfigured,
+    /// Cacheable stage had no entry and executed.
+    Miss,
+    /// Verified entry avoided engine execution.
+    Hit,
+    /// Engine semantics were not deterministic or seeded.
+    Uncacheable,
+}
+
+/// Actual admission and cache observation for one expensive stage.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct StageExecutionRecord {
+    /// Page index.
+    pub page_index: Option<u32>,
+    /// Stable stage name.
+    pub stage: String,
+    /// Selected engine.
+    pub engine_id: String,
+    /// Selected device.
+    pub device: DeviceId,
+    /// Conservative reservation, absent when a cache hit avoided admission.
+    pub reservation: Option<ResourceEstimate>,
+    /// Cache outcome.
+    pub cache: CacheDecision,
+    /// Observed peaks when platform attribution is available.
+    pub measurement: scheduler::LeaseMeasurement,
+}
+
+/// Ordered runtime resource observations.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ResourceExecutionTrace {
+    /// Expensive stages that were executed or served from cache.
+    pub stages: Vec<StageExecutionRecord>,
 }
 
 /// Embedded CPU converter with an optional explicitly loaded OCR model pair.
@@ -244,6 +304,7 @@ pub struct Converter {
     layout: RuleBasedLayoutEngine,
     ocr: OcrsEngine,
     options: ConversionOptions,
+    cache: Option<cache::StageCache>,
 }
 
 impl Converter {
@@ -253,6 +314,7 @@ impl Converter {
             layout: RuleBasedLayoutEngine::new(),
             ocr: OcrsEngine::without_models(),
             options,
+            cache: None,
         }
     }
 
@@ -266,7 +328,17 @@ impl Converter {
             layout: RuleBasedLayoutEngine::new(),
             ocr: OcrsEngine::from_model_bytes(detection, recognition)?,
             options,
+            cache: None,
         })
+    }
+
+    /// Enables a persistent deterministic stage cache.
+    pub fn enable_cache(
+        &mut self,
+        root: impl Into<std::path::PathBuf>,
+    ) -> Result<(), RuntimeError> {
+        self.cache = Some(cache::StageCache::open(root)?);
+        Ok(())
     }
 
     /// Enumerates and filters the currently implemented engine placements.
@@ -315,6 +387,11 @@ impl Converter {
         let ocr_ready = self.ocr.health(HealthRequest::Shallow)?.status
             == ferrodoc_engine_api::HealthStatus::Healthy;
         let plan = plan_for(&pdf, &self.options, ocr_ready);
+        let mut resource_runtime = ResourceRuntime::new(
+            self.options.clone(),
+            hardware::inventory(),
+            self.cache.clone(),
+        )?;
         let digest = pdf.inspection().digest;
         let document_id = DocumentId::derive(&[digest.as_bytes()]);
         let mut trace = vec![TraceEvent {
@@ -363,6 +440,7 @@ impl Converter {
                     bounds,
                     digest,
                     page_index,
+                    &mut resource_runtime,
                 )?)
             };
             let native_provenance = provenance(
@@ -407,13 +485,18 @@ impl Converter {
                     width: Some(raster.width),
                     height: Some(raster.height),
                 });
+                let ocr_model_digest = self.ocr.model_digest();
                 ocr_response = Some(execute_ocr(
                     &mut self.ocr,
-                    raster.rgba,
-                    raster.width,
-                    raster.height,
-                    page_index,
-                    self.options.ocr_dpi,
+                    OcrInput {
+                        rgba: raster.rgba,
+                        width: raster.width,
+                        height: raster.height,
+                        page_index,
+                        dpi: self.options.ocr_dpi,
+                    },
+                    ocr_model_digest,
+                    &mut resource_runtime,
                 )?);
                 trace.push(TraceEvent {
                     page_index: Some(page_index),
@@ -486,6 +569,9 @@ impl Converter {
             document,
             plan,
             trace: ConversionTrace { events: trace },
+            resources: ResourceExecutionTrace {
+                stages: resource_runtime.records,
+            },
         })
     }
 }
@@ -515,15 +601,26 @@ fn plan_engine(
         deterministic_seed: None,
         deadline: options.deadline,
     };
+    plan_request(engine, &request, model, options, inventory)
+}
+
+fn plan_request(
+    engine: &mut dyn Engine,
+    request: &EngineRequest,
+    model: planner::ModelAvailability,
+    options: &ConversionOptions,
+    inventory: &HardwareInventory,
+) -> Result<planner::PlanningReport, RuntimeError> {
+    let descriptor = engine.descriptor().clone();
     let candidates = engine
-        .estimate(&request, inventory)?
+        .estimate(request, inventory)?
         .into_iter()
         .map(|candidate| planner::CandidateInput {
             descriptor: descriptor.clone(),
             candidate,
             model: model.clone(),
         });
-    let mut policy = planner::PlannerPolicy::for_profile(options.profile, capability);
+    let mut policy = planner::PlannerPolicy::for_profile(options.profile, request.capability);
     policy.max_ram = options.max_ram;
     policy.max_vram = minimum_bytes(policy.max_vram, options.max_vram);
     policy.max_remote_cost = options.max_remote_cost;
@@ -538,6 +635,218 @@ fn minimum_bytes(left: Option<Bytes>, right: Option<Bytes>) -> Option<Bytes> {
         (Some(value), None) | (None, Some(value)) => Some(value),
         (None, None) => None,
     }
+}
+
+struct ResourceRuntime {
+    scheduler: scheduler::Scheduler,
+    cache: Option<cache::StageCache>,
+    inventory: HardwareInventory,
+    options: ConversionOptions,
+    records: Vec<StageExecutionRecord>,
+}
+
+impl ResourceRuntime {
+    fn new(
+        options: ConversionOptions,
+        inventory: HardwareInventory,
+        cache: Option<cache::StageCache>,
+    ) -> Result<Self, RuntimeError> {
+        let ram_budget = options
+            .max_ram
+            .or_else(|| inventory.ram_available.known().copied())
+            .unwrap_or_else(|| Bytes::new(768 * Bytes::MIB));
+        let cpu_workers = inventory.logical_cpus.known().copied().unwrap_or(1).max(1);
+        let device_budgets = inventory
+            .devices
+            .iter()
+            .filter_map(|device| {
+                device
+                    .memory_available
+                    .known()
+                    .copied()
+                    .map(|bytes| (device.id.clone(), bytes))
+            })
+            .collect();
+        let scheduler = scheduler::Scheduler::new(scheduler::SchedulerConfig {
+            cpu_workers,
+            ram_budget,
+            device_budgets,
+        })?;
+        Ok(Self {
+            scheduler,
+            cache,
+            inventory,
+            options,
+            records: Vec::new(),
+        })
+    }
+}
+
+fn execute_controlled(
+    engine: &mut dyn Engine,
+    request: EngineRequest,
+    resolver: &OneBlob,
+    model: planner::ModelAvailability,
+    stage: &str,
+    runtime: &mut ResourceRuntime,
+) -> Result<EngineResponse, RuntimeError> {
+    let report = plan_request(
+        engine,
+        &request,
+        model.clone(),
+        &runtime.options,
+        &runtime.inventory,
+    )?;
+    let candidate = report.selected.ok_or_else(|| RuntimeError::NoCandidate {
+        capability: request.capability,
+        explanation: report
+            .decisions
+            .iter()
+            .flat_map(|decision| decision.reasons.iter())
+            .map(|reason| format!("{:?}: {}", reason.code, reason.explanation))
+            .collect::<Vec<_>>()
+            .join("; "),
+    })?;
+    let descriptor = engine.descriptor().clone();
+    let mut parameters = request.parameters.clone();
+    if let Some(page_index) = request.page_index {
+        parameters.insert("ferrodoc.page_index".into(), serde_json::json!(page_index));
+    }
+    if let Some(seed) = request.deterministic_seed {
+        parameters.insert(
+            "ferrodoc.deterministic_seed".into(),
+            serde_json::json!(seed),
+        );
+    }
+    let model_digests = match model {
+        planner::ModelAvailability::Available { digest, .. } => {
+            BTreeMap::from([("primary".into(), digest)])
+        }
+        planner::ModelAvailability::NotRequired | planner::ModelAvailability::Missing { .. } => {
+            BTreeMap::new()
+        }
+    };
+    let key = cache::CacheKeyParts::with_parameters(
+        stage,
+        request
+            .input
+            .expected_digest
+            .unwrap_or_else(|| Sha256Digest::of_bytes(&resolver.bytes)),
+        model_digests,
+        &descriptor.id,
+        &descriptor.version,
+        CURRENT_SCHEMA_VERSION,
+        &parameters,
+    )?;
+    let cacheability = if descriptor.deterministic {
+        cache::Cacheability::Deterministic
+    } else if let Some(seed) = request.deterministic_seed {
+        cache::Cacheability::Seeded { seed }
+    } else {
+        cache::Cacheability::Uncacheable {
+            reason: "engine is nondeterministic and no deterministic seed is present".into(),
+        }
+    };
+    if !matches!(cacheability, cache::Cacheability::Uncacheable { .. })
+        && let Some(cache) = &runtime.cache
+        && let Some(hit) = cache.get(&key)?
+    {
+        let response: EngineResponse =
+            serde_json::from_slice(&hit.bytes).map_err(cache::CacheError::Metadata)?;
+        if response.request_id != request.request_id {
+            return Err(cache::CacheError::Corrupt {
+                path: runtime
+                    .cache
+                    .as_ref()
+                    .expect("cache exists")
+                    .clone()
+                    .root_path_for_error(),
+                reason: "cached response request ID differs from the semantic request".into(),
+            }
+            .into());
+        }
+        runtime.records.push(StageExecutionRecord {
+            page_index: request.page_index,
+            stage: stage.into(),
+            engine_id: candidate.engine_id,
+            device: candidate.device,
+            reservation: None,
+            cache: CacheDecision::Hit,
+            measurement: scheduler::LeaseMeasurement::default(),
+        });
+        return Ok(response);
+    }
+
+    let retain_warm = match (&model, &candidate.resources.warm_vram) {
+        (planner::ModelAvailability::Available { digest, .. }, Estimate::Known(bytes))
+            if candidate.device.kind() != DeviceKind::Cpu && bytes.get() > 0 =>
+        {
+            Some(scheduler::WarmResidency {
+                model_digest: *digest,
+                device: candidate.device.clone(),
+                bytes: *bytes,
+            })
+        }
+        _ => None,
+    };
+    let device = (candidate.device.kind() != DeviceKind::Cpu).then(|| {
+        (
+            candidate.device.clone(),
+            candidate.resources.peak_vram.clone(),
+        )
+    });
+    let cancellation = CancellationToken::default();
+    let deadline = request
+        .deadline
+        .map(|value| Instant::now() + Duration::from_millis(value.get()));
+    let mut lease = runtime.scheduler.acquire(
+        scheduler::LeaseRequest {
+            ram: candidate.resources.peak_ram.clone(),
+            device,
+            retain_warm,
+            guard_unknown: runtime.options.allow_unknown_hard_estimates,
+        },
+        cancellation.clone(),
+        deadline,
+    )?;
+    let trace = NoTrace;
+    let context = ExecutionContext {
+        cancellation,
+        deadline,
+        blobs: resolver,
+        trace: &trace,
+    };
+    let response = engine.execute(request.clone(), &context)?;
+    lease.complete();
+    let measurement = lease.measurement();
+    drop(lease);
+    let cache_decision = match (&runtime.cache, &cacheability) {
+        (
+            Some(cache),
+            cacheability
+            @ (cache::Cacheability::Deterministic | cache::Cacheability::Seeded { .. }),
+        ) => {
+            cache.put(
+                &key,
+                cacheability,
+                "application/vnd.ferrodoc.engine-response+json",
+                &serde_json::to_vec(&response).map_err(cache::CacheError::Metadata)?,
+            )?;
+            CacheDecision::Miss
+        }
+        (Some(_), cache::Cacheability::Uncacheable { .. }) => CacheDecision::Uncacheable,
+        (None, _) => CacheDecision::NotConfigured,
+    };
+    runtime.records.push(StageExecutionRecord {
+        page_index: request.page_index,
+        stage: stage.into(),
+        engine_id: candidate.engine_id,
+        device: candidate.device,
+        reservation: Some(candidate.resources),
+        cache: cache_decision,
+        measurement,
+    });
+    Ok(response)
 }
 
 fn plan_for(pdf: &PdfDocument, options: &ConversionOptions, ocr_ready: bool) -> ConversionPlan {
@@ -618,6 +927,7 @@ fn execute_layout(
     bounds: PageRect,
     document_digest: Sha256Digest,
     page_index: u32,
+    resources: &mut ResourceRuntime,
 ) -> Result<EngineResponse, RuntimeError> {
     let resolver = OneBlob::new("native-text", text.as_bytes().to_vec(), "text/plain")?;
     let request = EngineRequest {
@@ -639,51 +949,59 @@ fn execute_layout(
         deterministic_seed: None,
         deadline: None,
     };
-    execute_embedded(engine, request, &resolver)
+    execute_controlled(
+        engine,
+        request,
+        &resolver,
+        planner::ModelAvailability::NotRequired,
+        "layout.rulebased",
+        resources,
+    )
 }
 
-fn execute_ocr(
-    engine: &mut OcrsEngine,
+struct OcrInput {
     rgba: Vec<u8>,
     width: u32,
     height: u32,
     page_index: u32,
     dpi: u32,
+}
+
+fn execute_ocr(
+    engine: &mut OcrsEngine,
+    input: OcrInput,
+    model_digest: Option<Sha256Digest>,
+    resources: &mut ResourceRuntime,
 ) -> Result<EngineResponse, RuntimeError> {
-    let resolver = OneBlob::new("page-rgba", rgba, RGBA8_MEDIA_TYPE)?;
+    let resolver = OneBlob::new("page-rgba", input.rgba, RGBA8_MEDIA_TYPE)?;
     let request = EngineRequest {
         request_id: RequestId::derive(&[
             resolver.digest.as_bytes(),
             b"ocr",
-            &page_index.to_be_bytes(),
+            &input.page_index.to_be_bytes(),
         ]),
         capability: Capability::OcrPage,
         input: resolver.scoped.clone(),
-        page_index: Some(page_index),
+        page_index: Some(input.page_index),
         parameters: BTreeMap::from([
-            ("width".into(), serde_json::json!(width)),
-            ("height".into(), serde_json::json!(height)),
-            ("dpi".into(), serde_json::json!(dpi)),
+            ("width".into(), serde_json::json!(input.width)),
+            ("height".into(), serde_json::json!(input.height)),
+            ("dpi".into(), serde_json::json!(input.dpi)),
         ]),
         deterministic_seed: None,
         deadline: None,
     };
-    execute_embedded(engine, request, &resolver)
-}
-
-fn execute_embedded(
-    engine: &mut dyn Engine,
-    request: EngineRequest,
-    resolver: &OneBlob,
-) -> Result<EngineResponse, RuntimeError> {
-    let trace = NoTrace;
-    let context = ExecutionContext {
-        cancellation: CancellationToken::default(),
-        deadline: None,
-        blobs: resolver,
-        trace: &trace,
-    };
-    engine.execute(request, &context).map_err(Into::into)
+    let model_id = ModelId::derive(&[b"ocrs-model-pair"]);
+    let model = model_digest.map_or(
+        planner::ModelAvailability::Missing {
+            id: model_id.clone(),
+        },
+        |digest| planner::ModelAvailability::Available {
+            id: model_id,
+            digest,
+        },
+    );
+    execute_controlled(engine, request, &resolver, model, "ocr.ocrs", resources)
 }
 
 #[allow(clippy::too_many_arguments)]

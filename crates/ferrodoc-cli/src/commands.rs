@@ -107,15 +107,40 @@ pub fn run(command: Command) -> Result<(), CommandError> {
             let result = converter.convert(bytes)?;
             let inventory = ferrodoc_runtime::hardware::inventory();
             let resource_plans = converter.resource_plans(&inventory)?;
-            let leases: Vec<_> = resource_plans
+            let leases: Vec<_> = result
+                .resources
+                .stages
                 .iter()
-                .filter_map(|report| report.selected.as_ref())
-                .map(|candidate| {
+                .filter_map(|stage| {
+                    stage
+                        .reservation
+                        .as_ref()
+                        .map(|reservation| (stage, reservation))
+                })
+                .map(|(stage, reservation)| {
                     serde_json::json!({
-                        "engine_id": candidate.engine_id,
-                        "device": candidate.device,
-                        "reservation": candidate.resources,
+                        "page_index": stage.page_index,
+                        "stage": stage.stage,
+                        "engine_id": stage.engine_id,
+                        "device": stage.device,
+                        "reservation": reservation,
                     })
+                })
+                .collect();
+            let cache_decisions: Vec<_> = result
+                .resources
+                .stages
+                .iter()
+                .map(|stage| {
+                    serde_json::json!({"page_index": stage.page_index, "stage": stage.stage, "decision": stage.cache})
+                })
+                .collect();
+            let measurements: Vec<_> = result
+                .resources
+                .stages
+                .iter()
+                .map(|stage| {
+                    serde_json::json!({"page_index": stage.page_index, "stage": stage.stage, "measurement": stage.measurement})
                 })
                 .collect();
             #[derive(Serialize)]
@@ -124,15 +149,15 @@ pub fn run(command: Command) -> Result<(), CommandError> {
                 trace: &'a ferrodoc_runtime::ConversionTrace,
                 resource_plans: &'a [ferrodoc_runtime::planner::PlanningReport],
                 leases: Vec<serde_json::Value>,
-                cache_decisions: serde_json::Value,
-                measurements: serde_json::Value,
+                cache_decisions: Vec<serde_json::Value>,
+                measurements: Vec<serde_json::Value>,
             }
             print_json(&ExplainOutput {
                 trace: &result.trace,
                 resource_plans: &resource_plans,
                 leases,
-                cache_decisions: serde_json::json!({"status": "not_configured", "eligible_stages": ["layout.rulebased", "ocr.ocrs"]}),
-                measurements: serde_json::json!({"status": "unknown", "reason": "platform process metrics are unavailable for embedded execution"}),
+                cache_decisions,
+                measurements,
             })?;
         }
         Command::Convert(arguments) => convert(arguments)?,
@@ -270,7 +295,10 @@ fn convert(arguments: ConvertArgs) -> Result<(), CommandError> {
 fn converter_and_input(arguments: PipelineArgs) -> Result<(Converter, Vec<u8>), CommandError> {
     let configuration = Configuration::load(arguments)?;
     let bytes = read(&configuration.input)?;
-    let converter = load_converter(configuration.options, configuration.model_dir.as_deref())?;
+    let mut converter = load_converter(configuration.options, configuration.model_dir.as_deref())?;
+    if let Some(cache_dir) = configuration.cache_dir {
+        converter.enable_cache(cache_dir)?;
+    }
     Ok((converter, bytes))
 }
 

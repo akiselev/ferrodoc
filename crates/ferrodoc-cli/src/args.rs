@@ -56,6 +56,7 @@ pub struct PipelineArgs {
     pub max_remote_cost: Option<MicroUsd>,
     pub deadline: Option<Millis>,
     pub allow_unknown_estimates: bool,
+    pub cache_dir: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -201,6 +202,7 @@ fn parse_pipeline(
     let mut max_remote_cost = None;
     let mut deadline = None;
     let mut allow_unknown_estimates = false;
+    let mut cache_dir = None;
     let mut format = OutputFormat::Markdown;
     let mut index = 0;
     while index < values.len() {
@@ -268,6 +270,9 @@ fn parse_pipeline(
                 )?));
             }
             "--allow-unknown-estimates" => allow_unknown_estimates = true,
+            "--cache-dir" => {
+                cache_dir = Some(PathBuf::from(next_value(values, &mut index, value)?));
+            }
             flag if flag.starts_with('-') => {
                 return Err(ArgsError(format!("unknown option {flag:?}")));
             }
@@ -290,6 +295,7 @@ fn parse_pipeline(
             max_remote_cost,
             deadline,
             allow_unknown_estimates,
+            cache_dir,
         },
         output,
         format,

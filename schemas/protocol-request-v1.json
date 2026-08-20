@@ -245,6 +245,100 @@
         }
       }
     },
+    "EstimateConfidence": {
+      "description": "Confidence class for an estimate.",
+      "oneOf": [
+        {
+          "description": "Directly measured for the same artifact and configuration.",
+          "type": "string",
+          "enum": [
+            "measured"
+          ]
+        },
+        {
+          "description": "Derived from a calibrated model or close observation.",
+          "type": "string",
+          "enum": [
+            "calibrated"
+          ]
+        },
+        {
+          "description": "Conservative static upper bound supplied by an engine.",
+          "type": "string",
+          "enum": [
+            "conservative"
+          ]
+        },
+        {
+          "description": "Weak heuristic unsuitable for strict admission by default.",
+          "type": "string",
+          "enum": [
+            "heuristic"
+          ]
+        }
+      ]
+    },
+    "EstimateSource": {
+      "description": "Provenance for a group of resource estimates.",
+      "type": "object",
+      "required": [
+        "confidence",
+        "method"
+      ],
+      "properties": {
+        "confidence": {
+          "description": "Confidence class.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EstimateConfidence"
+            }
+          ]
+        },
+        "method": {
+          "description": "Stable method identifier or short description.",
+          "type": "string"
+        }
+      }
+    },
+    "Estimate_for_EstimateSource": {
+      "description": "A value that is either known or explicitly unknown.",
+      "oneOf": [
+        {
+          "description": "A measured or estimated value is available.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "known"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/EstimateSource"
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
     "Estimate_for_uint32": {
       "description": "A value that is either known or explicitly unknown.",
       "oneOf": [
@@ -336,6 +430,17 @@
         "ram_total"
       ],
       "properties": {
+        "cpu_source": {
+          "description": "Provenance for the CPU topology values.",
+          "default": {
+            "status": "unknown"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_EstimateSource"
+            }
+          ]
+        },
         "devices": {
           "description": "Physical compute devices.",
           "default": [],
@@ -352,11 +457,33 @@
             }
           ]
         },
+        "physical_cpus": {
+          "description": "Physical CPU core count when the operating system exposes it.",
+          "default": {
+            "status": "unknown"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint32"
+            }
+          ]
+        },
         "ram_available": {
           "description": "Currently available host RAM.",
           "allOf": [
             {
               "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "ram_source": {
+          "description": "Provenance for the host RAM values.",
+          "default": {
+            "status": "unknown"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_EstimateSource"
             }
           ]
         },
