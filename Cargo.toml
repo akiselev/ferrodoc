@@ -5,6 +5,7 @@ members = [
   "crates/ferrodoc-engine-api",
   "crates/ferrodoc-ir",
   "crates/ferrodoc-pdf",
+  "crates/ferrodoc-plugin-sdk",
   "crates/ferrodoc-protocol",
   "crates/ferrodoc-render",
   "crates/ferrodoc-runtime",

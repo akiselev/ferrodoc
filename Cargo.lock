@@ -450,6 +450,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ferrodoc-plugin-sdk"
+version = "0.2.0"
+dependencies = [
+ "ferrodoc-core",
+ "ferrodoc-engine-api",
+ "ferrodoc-protocol",
+ "thiserror",
+]
+
+[[package]]
 name = "ferrodoc-protocol"
 version = "0.2.0"
 dependencies = [
