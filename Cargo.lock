@@ -425,6 +425,7 @@ dependencies = [
  "ferrodoc-engine-api",
  "ferrodoc-ir",
  "ferrodoc-pdf",
+ "ferrodoc-plugin-sdk",
  "ocrs",
  "rten",
  "serde_json",
@@ -448,6 +449,7 @@ dependencies = [
  "ferrodoc-core",
  "ferrodoc-engine-api",
  "ferrodoc-ir",
+ "ferrodoc-plugin-sdk",
  "serde_json",
 ]
 

@@ -11,6 +11,7 @@ description = "Pure-Rust CPU OCRS engine for Ferrodoc"
 ferrodoc-core = { path = "../../crates/ferrodoc-core" }
 ferrodoc-engine-api = { path = "../../crates/ferrodoc-engine-api" }
 ferrodoc-ir = { path = "../../crates/ferrodoc-ir" }
+ferrodoc-plugin-sdk = { path = "../../crates/ferrodoc-plugin-sdk" }
 ocrs.workspace = true
 rten.workspace = true
 serde_json.workspace = true

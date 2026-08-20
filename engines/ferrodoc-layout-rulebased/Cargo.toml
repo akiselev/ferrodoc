@@ -11,4 +11,5 @@ description = "Deterministic rule-based layout engine for Ferrodoc"
 ferrodoc-core = { path = "../../crates/ferrodoc-core" }
 ferrodoc-engine-api = { path = "../../crates/ferrodoc-engine-api" }
 ferrodoc-ir = { path = "../../crates/ferrodoc-ir" }
+ferrodoc-plugin-sdk = { path = "../../crates/ferrodoc-plugin-sdk" }
 serde_json.workspace = true
