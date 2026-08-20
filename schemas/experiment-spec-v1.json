@@ -1,0 +1,280 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExperimentSpec",
+  "description": "Immutable experiment definition.",
+  "type": "object",
+  "required": [
+    "budget",
+    "code_digest",
+    "comparison_policy",
+    "corpus_digest",
+    "evaluator_digest",
+    "experiment_id",
+    "protected",
+    "spec_version",
+    "trials"
+  ],
+  "properties": {
+    "budget": {
+      "$ref": "#/definitions/ExperimentBudget"
+    },
+    "code_digest": {
+      "$ref": "#/definitions/Sha256Digest"
+    },
+    "comparison_policy": {
+      "$ref": "#/definitions/ComparisonPolicy"
+    },
+    "corpus_digest": {
+      "$ref": "#/definitions/Sha256Digest"
+    },
+    "evaluator_digest": {
+      "$ref": "#/definitions/Sha256Digest"
+    },
+    "experiment_id": {
+      "type": "string"
+    },
+    "model_digest": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "protected": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ProtectedArtifact"
+      }
+    },
+    "spec_version": {
+      "type": "string"
+    },
+    "trials": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/TrialSpec"
+      }
+    }
+  },
+  "definitions": {
+    "CommandProvenance": {
+      "description": "Exact command and selected environment facts recorded by the producer.",
+      "type": "object",
+      "required": [
+        "argv",
+        "environment",
+        "working_directory_digest"
+      ],
+      "properties": {
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "working_directory_digest": {
+          "$ref": "#/definitions/Sha256Digest"
+        }
+      }
+    },
+    "ComparisonPolicy": {
+      "description": "Dimensions and numerical tolerances used for comparison.",
+      "type": "object",
+      "required": [
+        "required"
+      ],
+      "properties": {
+        "required": {
+          "description": "Dimensions required to be known and considered.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Dimension"
+          },
+          "uniqueItems": true
+        },
+        "tolerances": {
+          "description": "No-worse/better tolerance per dimension in its native units.",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      }
+    },
+    "Dimension": {
+      "description": "Dimension used for policy-specific Pareto comparison.",
+      "oneOf": [
+        {
+          "description": "Higher aggregate quality is better.",
+          "type": "string",
+          "enum": [
+            "quality"
+          ]
+        },
+        {
+          "description": "Higher throughput is better.",
+          "type": "string",
+          "enum": [
+            "throughput"
+          ]
+        },
+        {
+          "description": "Lower latency is better.",
+          "type": "string",
+          "enum": [
+            "latency"
+          ]
+        },
+        {
+          "description": "Lower peak RAM is better.",
+          "type": "string",
+          "enum": [
+            "ram"
+          ]
+        },
+        {
+          "description": "Lower peak VRAM is better.",
+          "type": "string",
+          "enum": [
+            "vram"
+          ]
+        },
+        {
+          "description": "Lower remote cost is better.",
+          "type": "string",
+          "enum": [
+            "cost"
+          ]
+        },
+        {
+          "description": "Lower failure rate is better.",
+          "type": "string",
+          "enum": [
+            "failure_rate"
+          ]
+        }
+      ]
+    },
+    "ExperimentBudget": {
+      "description": "Explicit finite admission budget.",
+      "type": "object",
+      "required": [
+        "maximum_evaluations",
+        "maximum_runner_wall_ms"
+      ],
+      "properties": {
+        "maximum_evaluations": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "maximum_runner_wall_ms": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ProtectedArtifact": {
+      "description": "File that must remain byte-identical throughout an evaluation run.",
+      "type": "object",
+      "required": [
+        "digest",
+        "path",
+        "role"
+      ],
+      "properties": {
+        "digest": {
+          "$ref": "#/definitions/Sha256Digest"
+        },
+        "path": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    },
+    "TrialSpec": {
+      "description": "Mutations are recorded but never executed by the evaluation runner.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "command",
+            "id",
+            "kind"
+          ],
+          "properties": {
+            "command": {
+              "$ref": "#/definitions/CommandProvenance"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "mutation"
+              ]
+            },
+            "output_digest": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Sha256Digest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "command",
+            "id",
+            "kind",
+            "raw_report",
+            "raw_report_digest"
+          ],
+          "properties": {
+            "command": {
+              "$ref": "#/definitions/CommandProvenance"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "evaluation"
+              ]
+            },
+            "raw_report": {
+              "type": "string"
+            },
+            "raw_report_digest": {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

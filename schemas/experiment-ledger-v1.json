@@ -1,0 +1,179 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExperimentLedger",
+  "description": "Resumable state. Raw reports stay external and digest-bound.",
+  "type": "object",
+  "required": [
+    "code_digest",
+    "completed_evaluations",
+    "corpus_digest",
+    "evaluator_digest",
+    "experiment_id",
+    "ledger_version",
+    "pareto_frontier",
+    "pending_evaluations",
+    "runner_wall_ms",
+    "spec_digest",
+    "trials"
+  ],
+  "properties": {
+    "code_digest": {
+      "$ref": "#/definitions/Sha256Digest"
+    },
+    "completed_evaluations": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "corpus_digest": {
+      "$ref": "#/definitions/Sha256Digest"
+    },
+    "evaluator_digest": {
+      "$ref": "#/definitions/Sha256Digest"
+    },
+    "experiment_id": {
+      "type": "string"
+    },
+    "ledger_version": {
+      "type": "string"
+    },
+    "model_digest": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "pareto_frontier": {
+      "description": "Trial IDs on the retained Pareto frontier. Tradeoffs and unknowns remain.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "pending_evaluations": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "runner_wall_ms": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "spec_digest": {
+      "$ref": "#/definitions/Sha256Digest"
+    },
+    "trials": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/TrialRecord"
+      }
+    }
+  },
+  "definitions": {
+    "Sha256Digest": {
+      "type": "string"
+    },
+    "TrialRecord": {
+      "type": "object",
+      "required": [
+        "id",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/TrialStatus"
+        }
+      }
+    },
+    "TrialStatus": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "pending"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "output_digest": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Sha256Digest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "mutation_recorded"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "engine_id",
+            "report_digest",
+            "status"
+          ],
+          "properties": {
+            "engine_id": {
+              "type": "string"
+            },
+            "report_digest": {
+              "$ref": "#/definitions/Sha256Digest"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "evaluation_complete"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "status"
+          ],
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "failed"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

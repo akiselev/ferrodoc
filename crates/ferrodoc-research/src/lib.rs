@@ -258,7 +258,17 @@ pub fn run(
             runner_wall_ms: 0,
         }
     };
-    let mut admitted = 0_u32;
+    let prior_runner_wall_ms = ledger.runner_wall_ms;
+    let mut admitted = ledger
+        .trials
+        .iter()
+        .filter(|record| {
+            matches!(
+                record.status,
+                TrialStatus::EvaluationComplete { .. } | TrialStatus::Failed { .. }
+            )
+        })
+        .count() as u32;
     for trial in &spec.trials {
         let record = ledger
             .trials
@@ -280,7 +290,7 @@ pub fn run(
                 ..
             } => {
                 if admitted >= spec.budget.maximum_evaluations
-                    || started.elapsed().as_millis()
+                    || u128::from(prior_runner_wall_ms) + started.elapsed().as_millis()
                         >= u128::from(spec.budget.maximum_runner_wall_ms)
                 {
                     continue;
@@ -314,7 +324,8 @@ pub fn run(
         .iter()
         .filter(|trial| trial.status == TrialStatus::Pending)
         .count() as u32;
-    ledger.runner_wall_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+    ledger.runner_wall_ms = prior_runner_wall_ms
+        .saturating_add(started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64);
     write_atomic(ledger_path, &serde_json::to_vec_pretty(&ledger)?)?;
     Ok(ledger)
 }
@@ -556,5 +567,22 @@ mod tests {
             raw_report_digest: Sha256Digest::of_bytes(b"report"),
         });
         assert!(spec.validate().is_err());
+    }
+
+    #[test]
+    fn checked_in_schema_snapshots_match_contracts() {
+        let spec: serde_json::Value =
+            serde_json::from_str(include_str!("../../../schemas/experiment-spec-v1.json")).unwrap();
+        let ledger: serde_json::Value =
+            serde_json::from_str(include_str!("../../../schemas/experiment-ledger-v1.json"))
+                .unwrap();
+        assert_eq!(
+            spec,
+            serde_json::to_value(schemars::schema_for!(ExperimentSpec)).unwrap()
+        );
+        assert_eq!(
+            ledger,
+            serde_json::to_value(schemars::schema_for!(ExperimentLedger)).unwrap()
+        );
     }
 }

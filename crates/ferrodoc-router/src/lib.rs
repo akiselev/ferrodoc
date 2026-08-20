@@ -858,4 +858,20 @@ mod tests {
             RouteClass::Native
         );
     }
+
+    #[test]
+    fn checked_in_schema_snapshots_match_contracts() {
+        let dataset: serde_json::Value =
+            serde_json::from_str(include_str!("../../../schemas/routing-dataset-v1.json")).unwrap();
+        let model: serde_json::Value =
+            serde_json::from_str(include_str!("../../../schemas/router-model-v1.json")).unwrap();
+        assert_eq!(
+            dataset,
+            serde_json::to_value(schemars::schema_for!(RoutingDataset)).unwrap()
+        );
+        assert_eq!(
+            model,
+            serde_json::to_value(schemars::schema_for!(RouterModel)).unwrap()
+        );
+    }
 }

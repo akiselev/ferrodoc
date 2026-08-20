@@ -1,0 +1,191 @@
+{
+  "report_version": "ferrodoc-benchmark-report/1",
+  "metric_version": "ferrodoc-metrics/1",
+  "metric_config": {
+    "geometry_thresholds": {
+      "heading": 0.5,
+      "paragraph": 0.5,
+      "table": 0.3,
+      "formula": 0.3
+    }
+  },
+  "corpus_digest": "9ca75658e0db622584320467b7cc312cff9f4409c2909d62c0a78df7fcd4f6d5",
+  "candidate": {
+    "engine_id": "portfolio.ocrs",
+    "engine_version": "0.2.0",
+    "model_digest": null,
+    "configuration_digest": "cc32c84a12989ddc31cd00a3ffe7ff233734dd60f5a6ce9ad1f6953fb45c680d",
+    "toolchain": "ferrodoc 0.2.0"
+  },
+  "cases": [
+    {
+      "case_id": "real_born_digital_a02fd5dc44fa",
+      "partition": "regression",
+      "status": "success",
+      "metrics": {
+        "cer": {
+          "errors": 0,
+          "truth_units": 132,
+          "rate": 0.0
+        },
+        "wer": {
+          "errors": 0,
+          "truth_units": 16,
+          "rate": 0.0
+        },
+        "reading_order": {
+          "true_positive": 0,
+          "false_positive": 0,
+          "false_negative": 2,
+          "f1": 0.0
+        },
+        "regions": {
+          "truth_regions": 3,
+          "predicted_regions": 3,
+          "matched_regions": 0,
+          "classification_correct": 0,
+          "mean_iou": 0.0
+        },
+        "categories": {
+          "heading": {
+            "truth_regions": 1,
+            "correct_matches": 0,
+            "mean_iou": 0.0,
+            "text_similarity": 0.0,
+            "quality": 0.0
+          },
+          "paragraph": {
+            "truth_regions": 2,
+            "correct_matches": 0,
+            "mean_iou": 0.0,
+            "text_similarity": 0.0,
+            "quality": 0.0
+          }
+        },
+        "tables": null,
+        "formulas": null,
+        "exact_regression": false,
+        "quality": 0.3333333333333333
+      },
+      "timing": {
+        "cold_wall_ms": {
+          "status": "measured",
+          "value": 17.621099,
+          "method": "benchmark parent std::time::Instant around one CLI process"
+        },
+        "warm_wall_ms": {
+          "status": "unknown",
+          "reason": "one isolated CLI process was executed; no warm sample"
+        },
+        "cold_cpu_ms": {
+          "status": "unknown",
+          "reason": "child-process CPU attribution is unavailable"
+        },
+        "warm_cpu_ms": {
+          "status": "unknown",
+          "reason": "no warm child-process sample"
+        }
+      },
+      "resources": {
+        "peak_rss": {
+          "status": "unknown",
+          "reason": "peak RSS was not supplied"
+        },
+        "peak_vram": {
+          "status": "unknown",
+          "reason": "peak VRAM was not supplied"
+        },
+        "model_load_time": {
+          "status": "unknown",
+          "reason": "model load time was not supplied"
+        },
+        "warm_residency": {
+          "status": "unknown",
+          "reason": "warm residency was not supplied"
+        },
+        "remote_cost": {
+          "status": "unknown",
+          "reason": "remote cost was not supplied"
+        }
+      }
+    },
+    {
+      "case_id": "real_image_only_b9236636ec15",
+      "partition": "regression",
+      "status": "failure",
+      "category": "conversion_failed",
+      "message": "Ferrodoc CLI exited with exit status: 2",
+      "timing": {
+        "cold_wall_ms": {
+          "status": "measured",
+          "value": 18.2437,
+          "method": "benchmark parent std::time::Instant around one CLI process"
+        },
+        "warm_wall_ms": {
+          "status": "unknown",
+          "reason": "one isolated CLI process was executed; no warm sample"
+        },
+        "cold_cpu_ms": {
+          "status": "unknown",
+          "reason": "child-process CPU attribution is unavailable"
+        },
+        "warm_cpu_ms": {
+          "status": "unknown",
+          "reason": "no warm child-process sample"
+        }
+      },
+      "resources": {
+        "peak_rss": {
+          "status": "unknown",
+          "reason": "peak RSS was not supplied"
+        },
+        "peak_vram": {
+          "status": "unknown",
+          "reason": "peak VRAM was not supplied"
+        },
+        "model_load_time": {
+          "status": "unknown",
+          "reason": "model load time was not supplied"
+        },
+        "warm_residency": {
+          "status": "unknown",
+          "reason": "warm residency was not supplied"
+        },
+        "remote_cost": {
+          "status": "unknown",
+          "reason": "remote cost was not supplied"
+        }
+      }
+    }
+  ],
+  "aggregate": {
+    "total_cases": 2,
+    "succeeded": 1,
+    "failed": 1,
+    "skipped": 0,
+    "quality": 0.16666666666666666,
+    "failure_rate": 0.5,
+    "throughput_pages_per_second": {
+      "status": "measured",
+      "value": 55.764985606081325,
+      "method": "sum of supplied cold wall samples"
+    },
+    "latency_ms": {
+      "status": "measured",
+      "value": 35.864799000000005,
+      "method": "sum of supplied cold wall samples"
+    },
+    "peak_ram": {
+      "status": "unknown",
+      "reason": "at least one case has unknown peak RAM"
+    },
+    "peak_vram": {
+      "status": "unknown",
+      "reason": "at least one case has unknown peak VRAM"
+    },
+    "remote_cost": {
+      "status": "unknown",
+      "reason": "at least one case has unknown remote cost"
+    }
+  }
+}
