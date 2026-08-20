@@ -8,6 +8,8 @@ use ferrodoc_engine_api::{
     TraceSink,
 };
 use ferrodoc_engine_ocrs::{OcrsEngine, RGBA8_MEDIA_TYPE};
+#[cfg(feature = "tesseract")]
+use ferrodoc_engine_tesseract::TesseractEngine;
 use ferrodoc_layout_rulebased::RuleBasedLayoutEngine;
 use ferrodoc_pdf::{PdfDocument, PdfLimits};
 use ferrodoc_runtime::{PluginCommand, ProcessConfig, ProcessEngine};
@@ -109,6 +111,46 @@ fn ocrs_wrapper_matches_embedded_when_binary_and_models_are_provided() {
     let command = PluginCommand::explicit(PathBuf::from(binary))
         .unwrap()
         .environment("FERRODOC_OCRS_MODEL_DIR", model_dir.into_os_string());
+    let config = ProcessConfig {
+        request_timeout: Duration::from_secs(180),
+        ..ProcessConfig::default()
+    };
+    let mut process = ProcessEngine::spawn(&command, config).unwrap();
+    assert_eq!(
+        embedded.execute(request.clone(), &context).unwrap(),
+        process.execute(request, &context).unwrap()
+    );
+}
+
+#[cfg(feature = "tesseract")]
+#[test]
+fn tesseract_wrapper_matches_embedded_when_binary_and_dependency_are_provided() {
+    let Some(binary) = std::env::var_os("FERRODOC_TEST_TESSERACT_BINARY") else {
+        return;
+    };
+    let mut embedded = TesseractEngine::discover("eng");
+    let pdf = PdfDocument::from_bytes(
+        include_bytes!("../../../fixtures/pdf/image-only.pdf").to_vec(),
+        PdfLimits::default(),
+    )
+    .unwrap();
+    let raster = pdf.render_page(0, 144).unwrap();
+    let request = EngineRequest {
+        request_id: RequestId::derive(&[b"tesseract-process-parity"]),
+        capability: Capability::OcrPage,
+        input: scoped(&raster.rgba, "tesseract-input", RGBA8_MEDIA_TYPE),
+        page_index: Some(0),
+        parameters: BTreeMap::from([
+            ("width".into(), serde_json::json!(raster.width)),
+            ("height".into(), serde_json::json!(raster.height)),
+            ("dpi".into(), serde_json::json!(144)),
+        ]),
+        deterministic_seed: None,
+        deadline: None,
+    };
+    let resolver = Resolver(raster.rgba);
+    let context = context(&resolver);
+    let command = PluginCommand::explicit(PathBuf::from(binary)).unwrap();
     let config = ProcessConfig {
         request_timeout: Duration::from_secs(180),
         ..ProcessConfig::default()

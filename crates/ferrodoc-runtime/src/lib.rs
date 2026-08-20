@@ -17,6 +17,8 @@ use ferrodoc_engine_api::{
     HealthRequest, TraceSink,
 };
 use ferrodoc_engine_ocrs::{OcrsEngine, RGBA8_MEDIA_TYPE};
+#[cfg(feature = "tesseract")]
+use ferrodoc_engine_tesseract::TesseractEngine;
 use ferrodoc_ir::{
     Document, DocumentMetadata, Evidence, EvidenceContent, Page, ReadingOrderEdge, Region,
     RegionKind, RenderArtifact, SelectedView, SelectionReason, SourceLayer, SourceLayerKind,
@@ -55,8 +57,8 @@ pub enum RuntimeError {
     /// No registered engine has the requested ID.
     #[error("unknown engine ID {0:?}")]
     UnknownEngine(String),
-    /// OCR is required by policy but its model pair is unavailable.
-    #[error("OCR required for page {page_index}, but OCRS models are unavailable")]
+    /// OCR is required by policy but the configured engine is unavailable.
+    #[error("OCR required for page {page_index}, but the configured OCR engine is unavailable")]
     OcrUnavailable {
         /// Page which requires OCR.
         page_index: u32,
@@ -302,7 +304,9 @@ pub struct ResourceExecutionTrace {
 /// Embedded CPU converter with an optional explicitly loaded OCR model pair.
 pub struct Converter {
     layout: RuleBasedLayoutEngine,
-    ocr: OcrsEngine,
+    ocr: Box<dyn Engine>,
+    ocr_model_id: ModelId,
+    ocr_model_digest: Option<Sha256Digest>,
     options: ConversionOptions,
     cache: Option<cache::StageCache>,
 }
@@ -312,7 +316,9 @@ impl Converter {
     pub fn new(options: ConversionOptions) -> Self {
         Self {
             layout: RuleBasedLayoutEngine::new(),
-            ocr: OcrsEngine::without_models(),
+            ocr: Box::new(OcrsEngine::without_models()),
+            ocr_model_id: ModelId::derive(&[b"ocrs-model-pair"]),
+            ocr_model_digest: None,
             options,
             cache: None,
         }
@@ -324,12 +330,30 @@ impl Converter {
         detection: Vec<u8>,
         recognition: Vec<u8>,
     ) -> Result<Self, RuntimeError> {
+        let ocr = OcrsEngine::from_model_bytes(detection, recognition)?;
+        let model_digest = ocr.model_digest();
         Ok(Self {
             layout: RuleBasedLayoutEngine::new(),
-            ocr: OcrsEngine::from_model_bytes(detection, recognition)?,
+            ocr: Box::new(ocr),
+            ocr_model_id: ModelId::derive(&[b"ocrs-model-pair"]),
+            ocr_model_digest: model_digest,
             options,
             cache: None,
         })
+    }
+
+    /// Creates a converter using the optional dynamically discovered Tesseract engine.
+    #[cfg(feature = "tesseract")]
+    pub fn with_tesseract(options: ConversionOptions, engine: TesseractEngine) -> Self {
+        let model_digest = engine.model_digest();
+        Self {
+            layout: RuleBasedLayoutEngine::new(),
+            ocr: Box::new(engine),
+            ocr_model_id: ModelId::derive(&[b"tesseract-traineddata"]),
+            ocr_model_digest: model_digest,
+            options,
+            cache: None,
+        }
     }
 
     /// Enables a persistent deterministic stage cache.
@@ -353,18 +377,17 @@ impl Converter {
             &self.options,
             inventory,
         )?;
-        let model_id = ModelId::derive(&[b"ocrs-model-pair"]);
-        let model = self.ocr.model_digest().map_or(
+        let model = self.ocr_model_digest.map_or(
             planner::ModelAvailability::Missing {
-                id: model_id.clone(),
+                id: self.ocr_model_id.clone(),
             },
             |digest| planner::ModelAvailability::Available {
-                id: model_id,
+                id: self.ocr_model_id.clone(),
                 digest,
             },
         );
         let ocr = plan_engine(
-            &mut self.ocr,
+            self.ocr.as_mut(),
             Capability::OcrPage,
             model,
             &self.options,
@@ -378,7 +401,12 @@ impl Converter {
         let pdf = PdfDocument::from_bytes(bytes.to_vec(), self.options.pdf_limits.clone())?;
         let ocr_ready = self.ocr.health(HealthRequest::Shallow)?.status
             == ferrodoc_engine_api::HealthStatus::Healthy;
-        Ok(plan_for(&pdf, &self.options, ocr_ready))
+        Ok(plan_for(
+            &pdf,
+            &self.options,
+            ocr_ready,
+            &self.ocr.descriptor().id,
+        ))
     }
 
     /// Converts a PDF to validated evidence IR using embedded engines.
@@ -386,7 +414,7 @@ impl Converter {
         let pdf = PdfDocument::from_bytes(bytes, self.options.pdf_limits.clone())?;
         let ocr_ready = self.ocr.health(HealthRequest::Shallow)?.status
             == ferrodoc_engine_api::HealthStatus::Healthy;
-        let plan = plan_for(&pdf, &self.options, ocr_ready);
+        let plan = plan_for(&pdf, &self.options, ocr_ready, &self.ocr.descriptor().id);
         let mut resource_runtime = ResourceRuntime::new(
             self.options.clone(),
             hardware::inventory(),
@@ -485,9 +513,10 @@ impl Converter {
                     width: Some(raster.width),
                     height: Some(raster.height),
                 });
-                let ocr_model_digest = self.ocr.model_digest();
+                let ocr_model_digest = self.ocr_model_digest;
+                let ocr_engine_id = self.ocr.descriptor().id.clone();
                 ocr_response = Some(execute_ocr(
-                    &mut self.ocr,
+                    self.ocr.as_mut(),
                     OcrInput {
                         rgba: raster.rgba,
                         width: raster.width,
@@ -495,7 +524,9 @@ impl Converter {
                         page_index,
                         dpi: self.options.ocr_dpi,
                     },
+                    self.ocr_model_id.clone(),
                     ocr_model_digest,
+                    ocr_engine_id,
                     &mut resource_runtime,
                 )?);
                 trace.push(TraceEvent {
@@ -849,7 +880,12 @@ fn execute_controlled(
     Ok(response)
 }
 
-fn plan_for(pdf: &PdfDocument, options: &ConversionOptions, ocr_ready: bool) -> ConversionPlan {
+fn plan_for(
+    pdf: &PdfDocument,
+    options: &ConversionOptions,
+    ocr_ready: bool,
+    ocr_engine_id: &str,
+) -> ConversionPlan {
     let mut stages = vec![PlannedStage {
         page_index: None,
         stage: "pdf.inspect".into(),
@@ -888,7 +924,7 @@ fn plan_for(pdf: &PdfDocument, options: &ConversionOptions, ocr_ready: bool) -> 
         let needs_ocr = native_characters < options.native_character_threshold as usize;
         stages.push(PlannedStage {
             page_index: Some(page.index),
-            stage: "ocr.ocrs".into(),
+            stage: ocr_engine_id.into(),
             decision: if needs_ocr {
                 if ocr_ready {
                     PlanDecision::Selected
@@ -906,7 +942,7 @@ fn plan_for(pdf: &PdfDocument, options: &ConversionOptions, ocr_ready: bool) -> 
                     if ocr_ready {
                         ""
                     } else {
-                        "; OCRS models are not loaded"
+                        "; configured OCR engine is not ready"
                     }
                 )
             } else {
@@ -968,9 +1004,11 @@ struct OcrInput {
 }
 
 fn execute_ocr(
-    engine: &mut OcrsEngine,
+    engine: &mut dyn Engine,
     input: OcrInput,
+    model_id: ModelId,
     model_digest: Option<Sha256Digest>,
+    stage_name: String,
     resources: &mut ResourceRuntime,
 ) -> Result<EngineResponse, RuntimeError> {
     let resolver = OneBlob::new("page-rgba", input.rgba, RGBA8_MEDIA_TYPE)?;
@@ -991,7 +1029,6 @@ fn execute_ocr(
         deterministic_seed: None,
         deadline: None,
     };
-    let model_id = ModelId::derive(&[b"ocrs-model-pair"]);
     let model = model_digest.map_or(
         planner::ModelAvailability::Missing {
             id: model_id.clone(),
@@ -1001,7 +1038,7 @@ fn execute_ocr(
             digest,
         },
     );
-    execute_controlled(engine, request, &resolver, model, "ocr.ocrs", resources)
+    execute_controlled(engine, request, &resolver, model, &stage_name, resources)
 }
 
 #[allow(clippy::too_many_arguments)]

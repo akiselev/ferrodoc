@@ -8,6 +8,7 @@ use crate::args::PipelineArgs;
 #[derive(Debug)]
 pub struct Configuration {
     pub input: PathBuf,
+    pub ocr_engine: String,
     pub model_dir: Option<PathBuf>,
     pub options: ConversionOptions,
     pub cache_dir: Option<PathBuf>,
@@ -39,11 +40,18 @@ impl Configuration {
             .ocr_engine
             .or(optional_env("FERRODOC_OCR_ENGINE")?)
             .unwrap_or_else(|| "ocrs".into());
-        if engine != "ocrs" {
+        if engine != "ocrs" && !tesseract_enabled(&engine) {
             return Err(ConfigurationError::Invalid {
                 name: "OCR engine",
                 value: engine,
-                reason: "Phase 2 supports only ocrs",
+                reason: "expected ocrs, or tesseract in a binary built with the tesseract feature",
+            });
+        }
+        if engine == "tesseract" && (arguments.model_dir.is_some() || env_model_dir.is_some()) {
+            return Err(ConfigurationError::Invalid {
+                name: "OCR model directory",
+                value: "--ocrs-model-dir".into(),
+                reason: "OCRS model directories cannot be used with Tesseract",
             });
         }
         let mut options = ConversionOptions::default();
@@ -67,11 +75,16 @@ impl Configuration {
         }
         Ok(Self {
             input: arguments.input,
+            ocr_engine: engine,
             model_dir: arguments.model_dir.or(env_model_dir),
             options,
             cache_dir: arguments.cache_dir.or(env_cache_dir),
         })
     }
+}
+
+fn tesseract_enabled(engine: &str) -> bool {
+    engine == "tesseract" && cfg!(feature = "tesseract")
 }
 
 fn optional_env(name: &'static str) -> Result<Option<String>, ConfigurationError> {

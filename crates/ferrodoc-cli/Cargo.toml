@@ -7,6 +7,13 @@ license.workspace = true
 authors.workspace = true
 description = "Offline evidence-preserving document conversion"
 
+[features]
+default = ["cpu-minimal", "process-engines"]
+cpu-minimal = ["ferrodoc-runtime/cpu-minimal"]
+process-engines = ["ferrodoc-runtime/process-engines"]
+tesseract = ["dep:ferrodoc-engine-tesseract", "ferrodoc-runtime/tesseract"]
+nvml = ["ferrodoc-runtime/nvml"]
+
 [[bin]]
 name = "ferrodoc"
 path = "src/main.rs"
@@ -15,6 +22,7 @@ path = "src/main.rs"
 ferrodoc-core = { path = "../ferrodoc-core" }
 ferrodoc-engine-api = { path = "../ferrodoc-engine-api" }
 ferrodoc-engine-ocrs = { path = "../../engines/ferrodoc-engine-ocrs" }
+ferrodoc-engine-tesseract = { path = "../../engines/ferrodoc-engine-tesseract", optional = true }
 ferrodoc-layout-rulebased = { path = "../../engines/ferrodoc-layout-rulebased" }
 ferrodoc-pdf = { path = "../ferrodoc-pdf" }
 ferrodoc-render = { path = "../ferrodoc-render" }
