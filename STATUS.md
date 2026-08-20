@@ -1,7 +1,6 @@
 # Status
 
 - Phase 0 is complete and merged locally; remote review and `core` branch protection remain release operations.
-- Phase 1 is complete and merged locally from `8e6e44f`.
-- Core contracts, evidence IR, schema/golden snapshots, engine API, protocol schema, and all Phase 1 package boundaries are implemented in ordered commits.
-- All 47 workspace tests, boundary checks, locked build, Clippy, canonical snapshots, and the offline smoke path pass; see `docs/phase-1-pr.md`.
-- Next: begin the real PDF/OCR vertical slice and test representative `~/research/lightbulb` PDFs.
+- Phases 0 and 1 are complete and merged locally; remote review and branch protection remain release operations.
+- Phase 2 is in progress from `90f7266` on `phase-2/minimal-conversion`.
+- Current work: inspect the available `~/research/lightbulb` corpus and implement bounded PDF acquisition/native extraction/rasterization before adding layout and CPU OCR.
