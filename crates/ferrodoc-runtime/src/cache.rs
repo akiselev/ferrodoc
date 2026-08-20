@@ -363,6 +363,12 @@ mod tests {
         value.engine_version = "2.0.0".into();
         variants.push(value);
         let mut value = base.clone();
+        value.engine_id = "other-engine".into();
+        variants.push(value);
+        let mut value = base.clone();
+        value.stage = "layout.detect".into();
+        variants.push(value);
+        let mut value = base.clone();
         value.schema_version.minor += 1;
         variants.push(value);
         let mut value = base.clone();

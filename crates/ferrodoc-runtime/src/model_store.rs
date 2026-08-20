@@ -584,6 +584,51 @@ mod tests {
         assert!(store.list().unwrap().is_empty());
     }
 
+    #[test]
+    fn one_bad_file_prevents_a_multi_file_view_from_becoming_visible() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = ModelStore::open(directory.path()).unwrap();
+        let first = b"first";
+        let second = b"second";
+        let manifest = ModelManifest::new(
+            CURRENT_SCHEMA_VERSION,
+            ModelId::derive(&[b"pair"]),
+            "pair-revision",
+            vec![
+                ModelFile::new(
+                    RelativePath::new("first.bin").unwrap(),
+                    Sha256Digest::of_bytes(first),
+                    Bytes::new(first.len() as u64),
+                    MediaType::new("application/octet-stream").unwrap(),
+                )
+                .unwrap(),
+                ModelFile::new(
+                    RelativePath::new("second.bin").unwrap(),
+                    Sha256Digest::of_bytes(second),
+                    Bytes::new(second.len() as u64),
+                    MediaType::new("application/octet-stream").unwrap(),
+                )
+                .unwrap(),
+            ],
+            LicenseMetadata {
+                expression: "MIT".into(),
+                source: "fixture".into(),
+                notice: None,
+            },
+            None,
+        )
+        .unwrap();
+        let sources = BTreeMap::from([
+            (RelativePath::new("first.bin").unwrap(), first.to_vec()),
+            (
+                RelativePath::new("second.bin").unwrap(),
+                b"partial".to_vec(),
+            ),
+        ]);
+        assert!(store.install_bytes(&manifest, &sources, false).is_err());
+        assert!(store.list().unwrap().is_empty());
+    }
+
     #[cfg(unix)]
     #[test]
     fn source_symlink_cannot_escape_acquisition_root() {

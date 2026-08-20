@@ -267,11 +267,18 @@ mod tests {
         fn health(&mut self, _: HealthRequest) -> Result<HealthReport, EngineError> {
             Ok(HealthReport {
                 status: HealthStatus::Unavailable,
-                dependencies: vec![DependencyHealth {
-                    id: "fixture-model".into(),
-                    status: HealthStatus::Unavailable,
-                    message: "missing".into(),
-                }],
+                dependencies: vec![
+                    DependencyHealth {
+                        id: "fixture-model".into(),
+                        status: HealthStatus::Unavailable,
+                        message: "missing".into(),
+                    },
+                    DependencyHealth {
+                        id: "native-runtime".into(),
+                        status: HealthStatus::Unavailable,
+                        message: "missing".into(),
+                    },
+                ],
                 message: "not ready".into(),
             })
         }
@@ -323,6 +330,9 @@ mod tests {
         }));
         assert!(report.checks.iter().any(|check| {
             check.stage == DoctorStage::Health && check.status == DoctorStatus::Failed
+        }));
+        assert!(report.checks.iter().any(|check| {
+            check.stage == DoctorStage::Dependency && check.status == DoctorStatus::Failed
         }));
         assert!(report.checks.iter().any(|check| {
             check.stage == DoctorStage::Inference && check.status == DoctorStatus::Failed
