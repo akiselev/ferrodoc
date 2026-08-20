@@ -1,0 +1,19 @@
+[package]
+name = "ferrodoc-engine-ocrs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Pure-Rust CPU OCRS engine for Ferrodoc"
+
+[dependencies]
+ferrodoc-core = { path = "../../crates/ferrodoc-core" }
+ferrodoc-engine-api = { path = "../../crates/ferrodoc-engine-api" }
+ferrodoc-ir = { path = "../../crates/ferrodoc-ir" }
+ocrs.workspace = true
+rten.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+ferrodoc-pdf = { path = "../../crates/ferrodoc-pdf" }
