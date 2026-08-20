@@ -1,0 +1,66 @@
+{
+  "schema_version": {
+    "major": 1,
+    "minor": 0
+  },
+  "case_id": "real_born_digital_a02fd5dc44fa",
+  "text": "FERRODOC FIXTURE HEADING\nFirst paragraph appears before the second paragraph.\nSecond paragraph confirms deterministic reading order.",
+  "regions": [
+    {
+      "id": "heading",
+      "kind": "heading",
+      "text": "FERRODOC FIXTURE HEADING",
+      "rect": {
+        "x": 72.0,
+        "y": 754.0,
+        "width": 330.0,
+        "height": 30.0
+      }
+    },
+    {
+      "id": "paragraph-1",
+      "kind": "paragraph",
+      "text": "First paragraph appears before the second paragraph.",
+      "rect": {
+        "x": 72.0,
+        "y": 704.0,
+        "width": 390.0,
+        "height": 18.0
+      }
+    },
+    {
+      "id": "paragraph-2",
+      "kind": "paragraph",
+      "text": "Second paragraph confirms deterministic reading order.",
+      "rect": {
+        "x": 72.0,
+        "y": 674.0,
+        "width": 410.0,
+        "height": 18.0
+      }
+    }
+  ],
+  "reading_order": [
+    [
+      "heading",
+      "paragraph-1"
+    ],
+    [
+      "paragraph-1",
+      "paragraph-2"
+    ]
+  ],
+  "tables": [],
+  "formulas": [],
+  "provenance": {
+    "generator_version": "ferrodoc-real-regression/1",
+    "seed": 0,
+    "degradation": {
+      "kind": "native"
+    },
+    "assets": [
+      "fixture-generator-source",
+      "pdf-standard-font-helvetica"
+    ]
+  }
+}

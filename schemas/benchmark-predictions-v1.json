@@ -1,0 +1,808 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PredictionSet",
+  "description": "Predictions to evaluate against one exact corpus.",
+  "type": "object",
+  "required": [
+    "candidate",
+    "cases",
+    "corpus_digest",
+    "schema_version"
+  ],
+  "properties": {
+    "candidate": {
+      "description": "Candidate identity.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/CandidateIdentity"
+        }
+      ]
+    },
+    "cases": {
+      "description": "Case predictions. Missing manifest cases become failures; extras reject the set.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CasePrediction"
+      }
+    },
+    "corpus_digest": {
+      "description": "Exact corpus identity.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        }
+      ]
+    },
+    "schema_version": {
+      "description": "Prediction schema.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SchemaVersion"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "BlockKind": {
+      "description": "Semantic block category.",
+      "oneOf": [
+        {
+          "description": "Heading text.",
+          "type": "string",
+          "enum": [
+            "heading"
+          ]
+        },
+        {
+          "description": "Paragraph text.",
+          "type": "string",
+          "enum": [
+            "paragraph"
+          ]
+        },
+        {
+          "description": "Table region.",
+          "type": "string",
+          "enum": [
+            "table"
+          ]
+        },
+        {
+          "description": "Formula region.",
+          "type": "string",
+          "enum": [
+            "formula"
+          ]
+        }
+      ]
+    },
+    "CandidateIdentity": {
+      "description": "Candidate identity required for reproducibility.",
+      "type": "object",
+      "required": [
+        "configuration_digest",
+        "engine_id",
+        "engine_version",
+        "toolchain"
+      ],
+      "properties": {
+        "configuration_digest": {
+          "description": "Digest of normalized candidate configuration.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        },
+        "engine_id": {
+          "description": "Engine ID.",
+          "type": "string"
+        },
+        "engine_version": {
+          "description": "Engine implementation version.",
+          "type": "string"
+        },
+        "model_digest": {
+          "description": "Optional immutable model digest.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "toolchain": {
+          "description": "Rust toolchain identity or external runtime identity.",
+          "type": "string"
+        }
+      }
+    },
+    "CasePrediction": {
+      "description": "One candidate prediction record.",
+      "type": "object",
+      "oneOf": [
+        {
+          "description": "Conversion succeeded.",
+          "type": "object",
+          "required": [
+            "prediction",
+            "status"
+          ],
+          "properties": {
+            "prediction": {
+              "description": "Candidate prediction.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/PredictionDocument"
+                }
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "success"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Conversion failed and must count as a failure.",
+          "type": "object",
+          "required": [
+            "category",
+            "message",
+            "status"
+          ],
+          "properties": {
+            "category": {
+              "description": "Stable failure category.",
+              "type": "string"
+            },
+            "message": {
+              "description": "Redacted failure explanation.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "failure"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Case was explicitly excluded.",
+          "type": "object",
+          "required": [
+            "exclusion",
+            "status"
+          ],
+          "properties": {
+            "exclusion": {
+              "description": "Visible exclusion rationale.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "skipped"
+              ]
+            }
+          }
+        }
+      ],
+      "required": [
+        "case_id"
+      ],
+      "properties": {
+        "case_id": {
+          "description": "Exact manifest case ID.",
+          "type": "string"
+        },
+        "resources": {
+          "description": "Resource/cost evidence; unknown remains explicit.",
+          "default": {
+            "model_load_time": {
+              "reason": "model load time was not supplied",
+              "status": "unknown"
+            },
+            "peak_rss": {
+              "reason": "peak RSS was not supplied",
+              "status": "unknown"
+            },
+            "peak_vram": {
+              "reason": "peak VRAM was not supplied",
+              "status": "unknown"
+            },
+            "remote_cost": {
+              "reason": "remote cost was not supplied",
+              "status": "unknown"
+            },
+            "warm_residency": {
+              "reason": "warm residency was not supplied",
+              "status": "unknown"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ResourceReport"
+            }
+          ]
+        },
+        "timing": {
+          "description": "Optional timing evidence.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TimingReport"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "EvidenceValue_for_SampleSummary": {
+      "description": "A value whose evidence class cannot be confused with zero.",
+      "oneOf": [
+        {
+          "description": "Direct observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable measurement method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "measured"
+              ]
+            },
+            "value": {
+              "description": "Observed value.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/SampleSummary"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "description": "Defensible estimate, not an observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable estimation method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "estimated"
+              ]
+            },
+            "value": {
+              "description": "Estimated value.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/SampleSummary"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "reason",
+            "status"
+          ],
+          "properties": {
+            "reason": {
+              "description": "Explanation.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "EvidenceValue_for_double": {
+      "description": "A value whose evidence class cannot be confused with zero.",
+      "oneOf": [
+        {
+          "description": "Direct observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable measurement method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "measured"
+              ]
+            },
+            "value": {
+              "description": "Observed value.",
+              "type": "number",
+              "format": "double"
+            }
+          }
+        },
+        {
+          "description": "Defensible estimate, not an observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable estimation method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "estimated"
+              ]
+            },
+            "value": {
+              "description": "Estimated value.",
+              "type": "number",
+              "format": "double"
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "reason",
+            "status"
+          ],
+          "properties": {
+            "reason": {
+              "description": "Explanation.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "EvidenceValue_for_uint64": {
+      "description": "A value whose evidence class cannot be confused with zero.",
+      "oneOf": [
+        {
+          "description": "Direct observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable measurement method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "measured"
+              ]
+            },
+            "value": {
+              "description": "Observed value.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "Defensible estimate, not an observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable estimation method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "estimated"
+              ]
+            },
+            "value": {
+              "description": "Estimated value.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "reason",
+            "status"
+          ],
+          "properties": {
+            "reason": {
+              "description": "Explanation.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "FormulaTruth": {
+      "description": "Formula semantic truth associated with one spatial block.",
+      "type": "object",
+      "required": [
+        "latex",
+        "region_id"
+      ],
+      "properties": {
+        "latex": {
+          "description": "Canonical expected LaTeX.",
+          "type": "string"
+        },
+        "region_id": {
+          "description": "Associated region ID.",
+          "type": "string"
+        }
+      }
+    },
+    "PredictedRegion": {
+      "description": "Predicted spatial region.",
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "rect",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "description": "Prediction-local ID used by table/formula association.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Predicted category.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockKind"
+            }
+          ]
+        },
+        "rect": {
+          "description": "Predicted PDF-point geometry.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TruthRect"
+            }
+          ]
+        },
+        "text": {
+          "description": "Predicted text.",
+          "type": "string"
+        }
+      }
+    },
+    "PredictionDocument": {
+      "description": "Complete prediction for a successful case.",
+      "type": "object",
+      "required": [
+        "regions",
+        "text"
+      ],
+      "properties": {
+        "formulas": {
+          "description": "Formulas associated with predicted region IDs.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FormulaTruth"
+          }
+        },
+        "reading_order": {
+          "description": "Directed reading-order edges using prediction IDs.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 2
+          }
+        },
+        "regions": {
+          "description": "Predicted regions.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PredictedRegion"
+          }
+        },
+        "tables": {
+          "description": "Tables associated with predicted region IDs.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TableTruth"
+          }
+        },
+        "text": {
+          "description": "Full predicted text.",
+          "type": "string"
+        }
+      }
+    },
+    "ResourceReport": {
+      "description": "Resource and cost evidence attached to a case or aggregate.",
+      "type": "object",
+      "required": [
+        "model_load_time",
+        "peak_rss",
+        "peak_vram",
+        "remote_cost",
+        "warm_residency"
+      ],
+      "properties": {
+        "model_load_time": {
+          "description": "Model loading duration.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        },
+        "peak_rss": {
+          "description": "Peak resident memory.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        },
+        "peak_vram": {
+          "description": "Peak device VRAM.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        },
+        "remote_cost": {
+          "description": "Remote monetary cost.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        },
+        "warm_residency": {
+          "description": "Retained warm memory.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        }
+      }
+    },
+    "SampleSummary": {
+      "description": "Summary over repeated samples.",
+      "type": "object",
+      "required": [
+        "count",
+        "max_ms",
+        "mean_ms",
+        "min_ms",
+        "stddev_ms"
+      ],
+      "properties": {
+        "count": {
+          "description": "Sample count.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "max_ms": {
+          "description": "Maximum milliseconds.",
+          "type": "number",
+          "format": "double"
+        },
+        "mean_ms": {
+          "description": "Arithmetic mean milliseconds.",
+          "type": "number",
+          "format": "double"
+        },
+        "min_ms": {
+          "description": "Minimum milliseconds.",
+          "type": "number",
+          "format": "double"
+        },
+        "stddev_ms": {
+          "description": "Population standard deviation in milliseconds.",
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "SchemaVersion": {
+      "description": "A semantic schema version. Major changes require migration; minor additions are compatible.",
+      "type": "object",
+      "required": [
+        "major",
+        "minor"
+      ],
+      "properties": {
+        "major": {
+          "description": "Compatibility-breaking version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "minor": {
+          "description": "Backward-compatible additive version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    },
+    "TableTruth": {
+      "description": "Table semantic truth associated with one spatial block.",
+      "type": "object",
+      "required": [
+        "cells",
+        "region_id"
+      ],
+      "properties": {
+        "cells": {
+          "description": "Rectangular cell grid.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "region_id": {
+          "description": "Associated region ID.",
+          "type": "string"
+        }
+      }
+    },
+    "TimingReport": {
+      "description": "Cold/warm wall and CPU measurements.",
+      "type": "object",
+      "required": [
+        "cold_cpu_ms",
+        "cold_wall_ms",
+        "warm_cpu_ms",
+        "warm_wall_ms"
+      ],
+      "properties": {
+        "cold_cpu_ms": {
+          "description": "First process CPU sample.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_double"
+            }
+          ]
+        },
+        "cold_wall_ms": {
+          "description": "First wall-clock sample.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_double"
+            }
+          ]
+        },
+        "warm_cpu_ms": {
+          "description": "Remaining process CPU samples.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_SampleSummary"
+            }
+          ]
+        },
+        "warm_wall_ms": {
+          "description": "Remaining wall-clock samples.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_SampleSummary"
+            }
+          ]
+        }
+      }
+    },
+    "TruthRect": {
+      "description": "Truth rectangle in PDF points.",
+      "type": "object",
+      "required": [
+        "height",
+        "width",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "height": {
+          "description": "Height.",
+          "type": "number",
+          "format": "double"
+        },
+        "width": {
+          "description": "Width.",
+          "type": "number",
+          "format": "double"
+        },
+        "x": {
+          "description": "Left coordinate.",
+          "type": "number",
+          "format": "double"
+        },
+        "y": {
+          "description": "Bottom coordinate.",
+          "type": "number",
+          "format": "double"
+        }
+      }
+    }
+  }
+}

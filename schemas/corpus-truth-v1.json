@@ -1,0 +1,349 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TruthDocument",
+  "description": "Complete truth for one generated case.",
+  "type": "object",
+  "required": [
+    "case_id",
+    "formulas",
+    "provenance",
+    "reading_order",
+    "regions",
+    "schema_version",
+    "tables",
+    "text"
+  ],
+  "properties": {
+    "case_id": {
+      "description": "Generated case ID.",
+      "type": "string"
+    },
+    "formulas": {
+      "description": "Spatially associated formulas.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FormulaTruth"
+      }
+    },
+    "provenance": {
+      "description": "Exact generation provenance.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/TruthProvenance"
+        }
+      ]
+    },
+    "reading_order": {
+      "description": "Directed reading-order edges.",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 2,
+        "minItems": 2
+      }
+    },
+    "regions": {
+      "description": "Spatial regions.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/TruthRegion"
+      }
+    },
+    "schema_version": {
+      "description": "Truth schema.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SchemaVersion"
+        }
+      ]
+    },
+    "tables": {
+      "description": "Spatially associated tables.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/TableTruth"
+      }
+    },
+    "text": {
+      "description": "Full expected text in reading order.",
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "BlockKind": {
+      "description": "Semantic block category.",
+      "oneOf": [
+        {
+          "description": "Heading text.",
+          "type": "string",
+          "enum": [
+            "heading"
+          ]
+        },
+        {
+          "description": "Paragraph text.",
+          "type": "string",
+          "enum": [
+            "paragraph"
+          ]
+        },
+        {
+          "description": "Table region.",
+          "type": "string",
+          "enum": [
+            "table"
+          ]
+        },
+        {
+          "description": "Formula region.",
+          "type": "string",
+          "enum": [
+            "formula"
+          ]
+        }
+      ]
+    },
+    "Degradation": {
+      "description": "Deterministic visual/source degradation.",
+      "oneOf": [
+        {
+          "description": "Native text PDF.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "native"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Native PDF with page rotation.",
+          "type": "object",
+          "required": [
+            "degrees",
+            "kind"
+          ],
+          "properties": {
+            "degrees": {
+              "description": "Clockwise degrees; currently 90, 180, or 270.",
+              "type": "integer",
+              "format": "int64"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "rotated"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Raster-only PDF with deterministic RGB perturbation.",
+          "type": "object",
+          "required": [
+            "dpi",
+            "kind",
+            "noise_per_mille"
+          ],
+          "properties": {
+            "dpi": {
+              "description": "Raster resolution.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "scan"
+              ]
+            },
+            "noise_per_mille": {
+              "description": "Fraction of channel values perturbed, in thousandths.",
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            }
+          }
+        }
+      ]
+    },
+    "FormulaTruth": {
+      "description": "Formula semantic truth associated with one spatial block.",
+      "type": "object",
+      "required": [
+        "latex",
+        "region_id"
+      ],
+      "properties": {
+        "latex": {
+          "description": "Canonical expected LaTeX.",
+          "type": "string"
+        },
+        "region_id": {
+          "description": "Associated region ID.",
+          "type": "string"
+        }
+      }
+    },
+    "SchemaVersion": {
+      "description": "A semantic schema version. Major changes require migration; minor additions are compatible.",
+      "type": "object",
+      "required": [
+        "major",
+        "minor"
+      ],
+      "properties": {
+        "major": {
+          "description": "Compatibility-breaking version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "minor": {
+          "description": "Backward-compatible additive version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "TableTruth": {
+      "description": "Table semantic truth associated with one spatial block.",
+      "type": "object",
+      "required": [
+        "cells",
+        "region_id"
+      ],
+      "properties": {
+        "cells": {
+          "description": "Rectangular cell grid.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "region_id": {
+          "description": "Associated region ID.",
+          "type": "string"
+        }
+      }
+    },
+    "TruthProvenance": {
+      "description": "Generator provenance retained with truth.",
+      "type": "object",
+      "required": [
+        "assets",
+        "degradation",
+        "generator_version",
+        "seed"
+      ],
+      "properties": {
+        "assets": {
+          "description": "Asset IDs used.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "degradation": {
+          "description": "Applied degradation.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Degradation"
+            }
+          ]
+        },
+        "generator_version": {
+          "description": "Generator identity.",
+          "type": "string"
+        },
+        "seed": {
+          "description": "Case-specific seed.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "TruthRect": {
+      "description": "Truth rectangle in PDF points.",
+      "type": "object",
+      "required": [
+        "height",
+        "width",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "height": {
+          "description": "Height.",
+          "type": "number",
+          "format": "double"
+        },
+        "width": {
+          "description": "Width.",
+          "type": "number",
+          "format": "double"
+        },
+        "x": {
+          "description": "Left coordinate.",
+          "type": "number",
+          "format": "double"
+        },
+        "y": {
+          "description": "Bottom coordinate.",
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "TruthRegion": {
+      "description": "One spatial semantic truth region.",
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "rect",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "description": "Region identity.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Semantic category.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockKind"
+            }
+          ]
+        },
+        "rect": {
+          "description": "PDF-point geometry.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TruthRect"
+            }
+          ]
+        },
+        "text": {
+          "description": "Expected text.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

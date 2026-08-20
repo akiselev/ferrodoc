@@ -1,0 +1,21 @@
+[package]
+name = "ferrodoc-foundry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Deterministic PDF corpus and truth generator for Ferrodoc"
+
+[dependencies]
+ferrodoc-core = { path = "../../crates/ferrodoc-core" }
+ferrodoc-pdf = { path = "../../crates/ferrodoc-pdf" }
+lopdf.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

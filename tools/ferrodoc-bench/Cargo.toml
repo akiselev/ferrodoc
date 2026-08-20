@@ -1,0 +1,22 @@
+[package]
+name = "ferrodoc-bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Integrity-first benchmark evaluator for Ferrodoc"
+
+[dependencies]
+ferrodoc-core = { path = "../../crates/ferrodoc-core" }
+ferrodoc-foundry = { path = "../ferrodoc-foundry" }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+unicode-normalization.workspace = true
+libc.workspace = true
+tempfile.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

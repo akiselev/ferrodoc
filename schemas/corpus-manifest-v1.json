@@ -1,0 +1,295 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CorpusManifest",
+  "description": "Reproducible corpus manifest.",
+  "type": "object",
+  "required": [
+    "assets",
+    "cases",
+    "corpus_digest",
+    "generator_version",
+    "schema_version",
+    "seed",
+    "spec_digest"
+  ],
+  "properties": {
+    "assets": {
+      "description": "Explicit asset provenance.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AssetSpec"
+      }
+    },
+    "cases": {
+      "description": "Generated cases.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CorpusCase"
+      }
+    },
+    "corpus_digest": {
+      "description": "Digest over generator, spec, assets, case IDs, and artifact digests.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        }
+      ]
+    },
+    "generator_version": {
+      "description": "Generator implementation identity.",
+      "type": "string"
+    },
+    "schema_version": {
+      "description": "Manifest schema.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SchemaVersion"
+        }
+      ]
+    },
+    "seed": {
+      "description": "Seed copied from the input specification.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "spec_digest": {
+      "description": "Digest of the exact input specification.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "AssetSpec": {
+      "description": "One explicitly declared font or other generator asset.",
+      "type": "object",
+      "required": [
+        "id",
+        "license",
+        "redistribution",
+        "source"
+      ],
+      "properties": {
+        "digest": {
+          "description": "Digest of bundled bytes; absent only for built-in assets.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "description": "Stable asset identifier.",
+          "type": "string"
+        },
+        "license": {
+          "description": "SPDX expression or `LicenseRef-*` identifier.",
+          "type": "string"
+        },
+        "redistribution": {
+          "description": "Redistribution policy.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RedistributionStatus"
+            }
+          ]
+        },
+        "source": {
+          "description": "Asset source or standard name.",
+          "type": "string"
+        }
+      }
+    },
+    "BlockKind": {
+      "description": "Semantic block category.",
+      "oneOf": [
+        {
+          "description": "Heading text.",
+          "type": "string",
+          "enum": [
+            "heading"
+          ]
+        },
+        {
+          "description": "Paragraph text.",
+          "type": "string",
+          "enum": [
+            "paragraph"
+          ]
+        },
+        {
+          "description": "Table region.",
+          "type": "string",
+          "enum": [
+            "table"
+          ]
+        },
+        {
+          "description": "Formula region.",
+          "type": "string",
+          "enum": [
+            "formula"
+          ]
+        }
+      ]
+    },
+    "CorpusCase": {
+      "description": "One generated corpus case.",
+      "type": "object",
+      "required": [
+        "case_identity",
+        "categories",
+        "document",
+        "document_digest",
+        "id",
+        "partition",
+        "truth",
+        "truth_digest"
+      ],
+      "properties": {
+        "case_identity": {
+          "description": "Identity independent of partition and degradation.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        },
+        "categories": {
+          "description": "Truth categories present in the case.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BlockKind"
+          },
+          "uniqueItems": true
+        },
+        "document": {
+          "description": "Relative PDF path.",
+          "type": "string"
+        },
+        "document_digest": {
+          "description": "Exact PDF digest.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        },
+        "id": {
+          "description": "Content-derived case ID.",
+          "type": "string"
+        },
+        "partition": {
+          "description": "Declared partition.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Partition"
+            }
+          ]
+        },
+        "truth": {
+          "description": "Relative truth path.",
+          "type": "string"
+        },
+        "truth_digest": {
+          "description": "Exact truth JSON digest.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        }
+      }
+    },
+    "Partition": {
+      "description": "Non-overlapping corpus partition.",
+      "oneOf": [
+        {
+          "description": "Training or broad exploratory cases.",
+          "type": "string",
+          "enum": [
+            "train"
+          ]
+        },
+        {
+          "description": "Development-time parameter selection cases.",
+          "type": "string",
+          "enum": [
+            "tuning"
+          ]
+        },
+        {
+          "description": "Sealed evaluation cases not used for optimization.",
+          "type": "string",
+          "enum": [
+            "held_out"
+          ]
+        },
+        {
+          "description": "Purpose-built deterministic regression cases.",
+          "type": "string",
+          "enum": [
+            "regression"
+          ]
+        }
+      ]
+    },
+    "RedistributionStatus": {
+      "description": "Redistribution status for an asset used by generated documents.",
+      "oneOf": [
+        {
+          "description": "Asset bytes may be redistributed under the recorded license.",
+          "type": "string",
+          "enum": [
+            "redistributable"
+          ]
+        },
+        {
+          "description": "Asset is a PDF/system built-in and contributes no bundled bytes.",
+          "type": "string",
+          "enum": [
+            "built_in"
+          ]
+        },
+        {
+          "description": "Asset may only be referenced locally and cannot enter a published corpus.",
+          "type": "string",
+          "enum": [
+            "local_only"
+          ]
+        }
+      ]
+    },
+    "SchemaVersion": {
+      "description": "A semantic schema version. Major changes require migration; minor additions are compatible.",
+      "type": "object",
+      "required": [
+        "major",
+        "minor"
+      ],
+      "properties": {
+        "major": {
+          "description": "Compatibility-breaking version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "minor": {
+          "description": "Backward-compatible additive version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    }
+  }
+}

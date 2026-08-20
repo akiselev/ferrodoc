@@ -1,0 +1,1054 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BenchmarkReport",
+  "description": "Complete benchmark report.",
+  "type": "object",
+  "required": [
+    "aggregate",
+    "candidate",
+    "cases",
+    "corpus_digest",
+    "metric_config",
+    "metric_version",
+    "report_version"
+  ],
+  "properties": {
+    "aggregate": {
+      "description": "Aggregate metrics.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/AggregateMetrics"
+        }
+      ]
+    },
+    "candidate": {
+      "description": "Candidate identity.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/CandidateIdentity"
+        }
+      ]
+    },
+    "cases": {
+      "description": "Complete case accounting.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CaseResult"
+      }
+    },
+    "corpus_digest": {
+      "description": "Exact corpus digest.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        }
+      ]
+    },
+    "metric_config": {
+      "description": "Exact metric configuration, including category thresholds.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/MetricConfig"
+        }
+      ]
+    },
+    "metric_version": {
+      "description": "Metric semantic version.",
+      "type": "string"
+    },
+    "report_version": {
+      "description": "Report semantic version.",
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "AggregateMetrics": {
+      "description": "Aggregate quality and coverage.",
+      "type": "object",
+      "required": [
+        "failed",
+        "failure_rate",
+        "latency_ms",
+        "peak_ram",
+        "peak_vram",
+        "quality",
+        "remote_cost",
+        "skipped",
+        "succeeded",
+        "throughput_pages_per_second",
+        "total_cases"
+      ],
+      "properties": {
+        "failed": {
+          "description": "Failed cases.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "failure_rate": {
+          "description": "Failed divided by non-skipped cases.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Probability"
+            }
+          ]
+        },
+        "latency_ms": {
+          "description": "Aggregate latency when measured.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_double"
+            }
+          ]
+        },
+        "peak_ram": {
+          "description": "Aggregate peak RAM evidence.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        },
+        "peak_vram": {
+          "description": "Aggregate peak VRAM evidence.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        },
+        "quality": {
+          "description": "Mean quality with failures included as zero and skips excluded.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Probability"
+            }
+          ]
+        },
+        "remote_cost": {
+          "description": "Aggregate remote cost evidence.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        },
+        "skipped": {
+          "description": "Explicitly skipped cases.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "succeeded": {
+          "description": "Successful cases.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "throughput_pages_per_second": {
+          "description": "Throughput when measured.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_double"
+            }
+          ]
+        },
+        "total_cases": {
+          "description": "Total manifest cases.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "CandidateIdentity": {
+      "description": "Candidate identity required for reproducibility.",
+      "type": "object",
+      "required": [
+        "configuration_digest",
+        "engine_id",
+        "engine_version",
+        "toolchain"
+      ],
+      "properties": {
+        "configuration_digest": {
+          "description": "Digest of normalized candidate configuration.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        },
+        "engine_id": {
+          "description": "Engine ID.",
+          "type": "string"
+        },
+        "engine_version": {
+          "description": "Engine implementation version.",
+          "type": "string"
+        },
+        "model_digest": {
+          "description": "Optional immutable model digest.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "toolchain": {
+          "description": "Rust toolchain identity or external runtime identity.",
+          "type": "string"
+        }
+      }
+    },
+    "CaseMetrics": {
+      "description": "Complete metrics for one successful case.",
+      "type": "object",
+      "required": [
+        "categories",
+        "cer",
+        "quality",
+        "reading_order",
+        "regions",
+        "wer"
+      ],
+      "properties": {
+        "categories": {
+          "description": "Explicit quality breakdown for every category present in truth.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/CategoryMetrics"
+          }
+        },
+        "cer": {
+          "description": "Unicode-normalized character error rate.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ErrorRate"
+            }
+          ]
+        },
+        "exact_regression": {
+          "description": "Exact semantic regression check for regression cases.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "formulas": {
+          "description": "Formula score when formulas exist in truth.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FormulaScore"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality": {
+          "description": "Average of applicable quality components.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Probability"
+            }
+          ]
+        },
+        "reading_order": {
+          "description": "Reading-order edge score.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EdgeScore"
+            }
+          ]
+        },
+        "regions": {
+          "description": "One-to-one spatial region score.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RegionScore"
+            }
+          ]
+        },
+        "tables": {
+          "description": "Table score when tables exist in truth.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TableScore"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wer": {
+          "description": "Unicode-normalized word error rate.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ErrorRate"
+            }
+          ]
+        }
+      }
+    },
+    "CaseResult": {
+      "description": "One complete evaluated case record.",
+      "type": "object",
+      "oneOf": [
+        {
+          "description": "Successful evaluation.",
+          "type": "object",
+          "required": [
+            "metrics",
+            "status"
+          ],
+          "properties": {
+            "metrics": {
+              "description": "Metrics.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/CaseMetrics"
+                }
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "success"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Conversion/prediction failure, including a missing prediction.",
+          "type": "object",
+          "required": [
+            "category",
+            "message",
+            "status"
+          ],
+          "properties": {
+            "category": {
+              "description": "Stable category.",
+              "type": "string"
+            },
+            "message": {
+              "description": "Redacted message.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "failure"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Visible exclusion.",
+          "type": "object",
+          "required": [
+            "exclusion",
+            "status"
+          ],
+          "properties": {
+            "exclusion": {
+              "description": "Exclusion rationale.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "skipped"
+              ]
+            }
+          }
+        }
+      ],
+      "required": [
+        "case_id",
+        "partition",
+        "resources"
+      ],
+      "properties": {
+        "case_id": {
+          "description": "Exact case ID.",
+          "type": "string"
+        },
+        "partition": {
+          "description": "Corpus partition.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Partition"
+            }
+          ]
+        },
+        "resources": {
+          "description": "Resource/cost evidence.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ResourceReport"
+            }
+          ]
+        },
+        "timing": {
+          "description": "Timing evidence.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TimingReport"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "CategoryMetrics": {
+      "description": "Quality breakdown for one truth-region category.",
+      "type": "object",
+      "required": [
+        "correct_matches",
+        "mean_iou",
+        "quality",
+        "text_similarity",
+        "truth_regions"
+      ],
+      "properties": {
+        "correct_matches": {
+          "description": "One-to-one matches whose prediction has this category.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "mean_iou": {
+          "description": "Mean IoU with unmatched or misclassified truth regions contributing zero.",
+          "type": "number",
+          "format": "double"
+        },
+        "quality": {
+          "description": "Mean of coverage, IoU, and region-text similarity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Probability"
+            }
+          ]
+        },
+        "text_similarity": {
+          "description": "Mean normalized region-text similarity with missing matches contributing zero.",
+          "type": "number",
+          "format": "double"
+        },
+        "truth_regions": {
+          "description": "Number of truth regions in this category.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "EdgeScore": {
+      "description": "Precision/recall/F1 counts.",
+      "type": "object",
+      "required": [
+        "f1",
+        "false_negative",
+        "false_positive",
+        "true_positive"
+      ],
+      "properties": {
+        "f1": {
+          "description": "Harmonic mean; zero when no correct edge exists.",
+          "type": "number",
+          "format": "double"
+        },
+        "false_negative": {
+          "description": "Truth edges not recovered.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "false_positive": {
+          "description": "Predicted edges absent from truth.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "true_positive": {
+          "description": "Correct predicted truth edges.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ErrorRate": {
+      "description": "Edit-distance score with visible denominator.",
+      "type": "object",
+      "required": [
+        "errors",
+        "rate",
+        "truth_units"
+      ],
+      "properties": {
+        "errors": {
+          "description": "Edit operations.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "rate": {
+          "description": "Errors divided by truth units; may exceed one.",
+          "type": "number",
+          "format": "double"
+        },
+        "truth_units": {
+          "description": "Truth units.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "EvidenceValue_for_SampleSummary": {
+      "description": "A value whose evidence class cannot be confused with zero.",
+      "oneOf": [
+        {
+          "description": "Direct observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable measurement method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "measured"
+              ]
+            },
+            "value": {
+              "description": "Observed value.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/SampleSummary"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "description": "Defensible estimate, not an observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable estimation method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "estimated"
+              ]
+            },
+            "value": {
+              "description": "Estimated value.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/SampleSummary"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "reason",
+            "status"
+          ],
+          "properties": {
+            "reason": {
+              "description": "Explanation.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "EvidenceValue_for_double": {
+      "description": "A value whose evidence class cannot be confused with zero.",
+      "oneOf": [
+        {
+          "description": "Direct observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable measurement method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "measured"
+              ]
+            },
+            "value": {
+              "description": "Observed value.",
+              "type": "number",
+              "format": "double"
+            }
+          }
+        },
+        {
+          "description": "Defensible estimate, not an observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable estimation method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "estimated"
+              ]
+            },
+            "value": {
+              "description": "Estimated value.",
+              "type": "number",
+              "format": "double"
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "reason",
+            "status"
+          ],
+          "properties": {
+            "reason": {
+              "description": "Explanation.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "EvidenceValue_for_uint64": {
+      "description": "A value whose evidence class cannot be confused with zero.",
+      "oneOf": [
+        {
+          "description": "Direct observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable measurement method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "measured"
+              ]
+            },
+            "value": {
+              "description": "Observed value.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "Defensible estimate, not an observation.",
+          "type": "object",
+          "required": [
+            "method",
+            "status",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "description": "Stable estimation method.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "estimated"
+              ]
+            },
+            "value": {
+              "description": "Estimated value.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "reason",
+            "status"
+          ],
+          "properties": {
+            "reason": {
+              "description": "Explanation.",
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "FormulaScore": {
+      "description": "Spatially associated formula score.",
+      "type": "object",
+      "required": [
+        "associated_formulas",
+        "token_similarity",
+        "truth_formulas"
+      ],
+      "properties": {
+        "associated_formulas": {
+          "description": "Truth formulas with a spatially matched prediction formula.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "token_similarity": {
+          "description": "Mean normalized LaTeX-token similarity.",
+          "type": "number",
+          "format": "double"
+        },
+        "truth_formulas": {
+          "description": "Number of truth formulas.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "MetricConfig": {
+      "description": "Metric configuration, including category-specific geometry thresholds.",
+      "type": "object",
+      "required": [
+        "geometry_thresholds"
+      ],
+      "properties": {
+        "geometry_thresholds": {
+          "description": "Minimum IoU by truth category.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      }
+    },
+    "Partition": {
+      "description": "Non-overlapping corpus partition.",
+      "oneOf": [
+        {
+          "description": "Training or broad exploratory cases.",
+          "type": "string",
+          "enum": [
+            "train"
+          ]
+        },
+        {
+          "description": "Development-time parameter selection cases.",
+          "type": "string",
+          "enum": [
+            "tuning"
+          ]
+        },
+        {
+          "description": "Sealed evaluation cases not used for optimization.",
+          "type": "string",
+          "enum": [
+            "held_out"
+          ]
+        },
+        {
+          "description": "Purpose-built deterministic regression cases.",
+          "type": "string",
+          "enum": [
+            "regression"
+          ]
+        }
+      ]
+    },
+    "Probability": {
+      "description": "A finite probability in the inclusive range zero through one.",
+      "type": "number",
+      "format": "double"
+    },
+    "RegionScore": {
+      "description": "One-to-one region assignment score.",
+      "type": "object",
+      "required": [
+        "classification_correct",
+        "matched_regions",
+        "mean_iou",
+        "predicted_regions",
+        "truth_regions"
+      ],
+      "properties": {
+        "classification_correct": {
+          "description": "Matched pairs with correct category.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "matched_regions": {
+          "description": "Spatially matched pairs.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "mean_iou": {
+          "description": "Mean IoU over matched pairs, zero when none match.",
+          "type": "number",
+          "format": "double"
+        },
+        "predicted_regions": {
+          "description": "Prediction region count.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "truth_regions": {
+          "description": "Truth region count.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ResourceReport": {
+      "description": "Resource and cost evidence attached to a case or aggregate.",
+      "type": "object",
+      "required": [
+        "model_load_time",
+        "peak_rss",
+        "peak_vram",
+        "remote_cost",
+        "warm_residency"
+      ],
+      "properties": {
+        "model_load_time": {
+          "description": "Model loading duration.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        },
+        "peak_rss": {
+          "description": "Peak resident memory.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        },
+        "peak_vram": {
+          "description": "Peak device VRAM.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        },
+        "remote_cost": {
+          "description": "Remote monetary cost.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        },
+        "warm_residency": {
+          "description": "Retained warm memory.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_uint64"
+            }
+          ]
+        }
+      }
+    },
+    "SampleSummary": {
+      "description": "Summary over repeated samples.",
+      "type": "object",
+      "required": [
+        "count",
+        "max_ms",
+        "mean_ms",
+        "min_ms",
+        "stddev_ms"
+      ],
+      "properties": {
+        "count": {
+          "description": "Sample count.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "max_ms": {
+          "description": "Maximum milliseconds.",
+          "type": "number",
+          "format": "double"
+        },
+        "mean_ms": {
+          "description": "Arithmetic mean milliseconds.",
+          "type": "number",
+          "format": "double"
+        },
+        "min_ms": {
+          "description": "Minimum milliseconds.",
+          "type": "number",
+          "format": "double"
+        },
+        "stddev_ms": {
+          "description": "Population standard deviation in milliseconds.",
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    },
+    "TableScore": {
+      "description": "Spatially associated table score.",
+      "type": "object",
+      "required": [
+        "associated_tables",
+        "semantic_similarity",
+        "structure_similarity",
+        "truth_tables"
+      ],
+      "properties": {
+        "associated_tables": {
+          "description": "Truth tables with a spatially matched prediction table.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "semantic_similarity": {
+          "description": "Mean normalized cell-text similarity.",
+          "type": "number",
+          "format": "double"
+        },
+        "structure_similarity": {
+          "description": "Mean row/column structure similarity.",
+          "type": "number",
+          "format": "double"
+        },
+        "truth_tables": {
+          "description": "Number of truth tables.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "TimingReport": {
+      "description": "Cold/warm wall and CPU measurements.",
+      "type": "object",
+      "required": [
+        "cold_cpu_ms",
+        "cold_wall_ms",
+        "warm_cpu_ms",
+        "warm_wall_ms"
+      ],
+      "properties": {
+        "cold_cpu_ms": {
+          "description": "First process CPU sample.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_double"
+            }
+          ]
+        },
+        "cold_wall_ms": {
+          "description": "First wall-clock sample.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_double"
+            }
+          ]
+        },
+        "warm_cpu_ms": {
+          "description": "Remaining process CPU samples.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_SampleSummary"
+            }
+          ]
+        },
+        "warm_wall_ms": {
+          "description": "Remaining wall-clock samples.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceValue_for_SampleSummary"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "schema_version": { "major": 1, "minor": 0 },
+  "seed": 20260820,
+  "assets": [
+    {
+      "id": "pdf.helvetica",
+      "license": "ISO-32000-2",
+      "source": "PDF standard 14 Helvetica font",
+      "redistribution": "built_in",
+      "digest": null
+    }
+  ],
+  "cases": [
+    {
+      "name": "native-reading-order",
+      "partition": "train",
+      "degradation": { "kind": "native" },
+      "blocks": [
+        { "id": "heading", "kind": "heading", "text": "FOUNDRY NATIVE", "font_size": 22, "x": 72.0, "y": 740.0, "width": 260.0, "height": 28.0 },
+        { "id": "first", "kind": "paragraph", "text": "The first region precedes the second.", "font_size": 12, "x": 72.0, "y": 690.0, "width": 330.0, "height": 18.0 },
+        { "id": "second", "kind": "paragraph", "text": "Unicode café normalizes deterministically.", "font_size": 12, "x": 72.0, "y": 650.0, "width": 340.0, "height": 18.0 }
+      ],
+      "reading_order": [["heading", "first"], ["first", "second"]],
+      "tables": [],
+      "formulas": []
+    },
+    {
+      "name": "noisy-scan",
+      "partition": "tuning",
+      "degradation": { "kind": "scan", "dpi": 96, "noise_per_mille": 7 },
+      "blocks": [
+        { "id": "scan-heading", "kind": "heading", "text": "SEEDED SCAN", "font_size": 24, "x": 72.0, "y": 720.0, "width": 220.0, "height": 30.0 },
+        { "id": "scan-body", "kind": "paragraph", "text": "Noise is deterministic and provenance-bearing.", "font_size": 13, "x": 72.0, "y": 670.0, "width": 380.0, "height": 20.0 }
+      ],
+      "reading_order": [["scan-heading", "scan-body"]],
+      "tables": [],
+      "formulas": []
+    },
+    {
+      "name": "table-formula-regression",
+      "partition": "regression",
+      "degradation": { "kind": "rotated", "degrees": 90 },
+      "blocks": [
+        { "id": "table", "kind": "table", "text": "A 1 B 2", "font_size": 12, "x": 72.0, "y": 700.0, "width": 200.0, "height": 80.0 },
+        { "id": "formula", "kind": "formula", "text": "x squared plus y", "font_size": 14, "x": 72.0, "y": 580.0, "width": 220.0, "height": 30.0 }
+      ],
+      "reading_order": [["table", "formula"]],
+      "tables": [{ "region_id": "table", "cells": [["A", "1"], ["B", "2"]] }],
+      "formulas": [{ "region_id": "formula", "latex": "x^2 + y" }]
+    }
+  ]
+}
