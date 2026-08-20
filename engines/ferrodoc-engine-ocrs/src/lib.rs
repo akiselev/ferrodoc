@@ -112,7 +112,7 @@ impl Engine for OcrsEngine {
     }
 
     fn estimate(
-        &self,
+        &mut self,
         request: &EngineRequest,
         _inventory: &HardwareInventory,
     ) -> Result<Vec<EngineCandidate>, EngineError> {

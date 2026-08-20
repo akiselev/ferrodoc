@@ -54,7 +54,14 @@ fn plan_is_specific_to_native_and_scanned_inputs() {
         .unwrap();
     assert!(native.status.success());
     let native_json: serde_json::Value = serde_json::from_slice(&native.stdout).unwrap();
-    assert_eq!(native_json["stages"][2]["decision"], "rejected");
+    let native_ocr = native_json["stages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|stage| stage["stage"] == "ocr.ocrs")
+        .unwrap();
+    assert_eq!(native_ocr["decision"], "rejected");
+    assert_eq!(native_ocr["execution"], "embedded");
 
     let scan = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
         .arg("plan")
@@ -63,7 +70,13 @@ fn plan_is_specific_to_native_and_scanned_inputs() {
         .unwrap();
     assert!(scan.status.success());
     let scan_json: serde_json::Value = serde_json::from_slice(&scan.stdout).unwrap();
-    assert_eq!(scan_json["stages"][2]["decision"], "unavailable");
+    let scan_ocr = scan_json["stages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|stage| stage["stage"] == "ocr.ocrs")
+        .unwrap();
+    assert_eq!(scan_ocr["decision"], "unavailable");
 }
 
 #[test]

@@ -1,0 +1,657 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RequestEnvelope",
+  "description": "Request envelope with a unique correlation ID.",
+  "type": "object",
+  "required": [
+    "message",
+    "request_id",
+    "version"
+  ],
+  "properties": {
+    "message": {
+      "description": "Host message.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/HostMessage"
+        }
+      ]
+    },
+    "request_id": {
+      "description": "Unique request ID.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/RequestId"
+        }
+      ]
+    },
+    "version": {
+      "description": "Negotiated version used for this message.",
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0.0
+    }
+  },
+  "definitions": {
+    "BlobId": {
+      "type": "string"
+    },
+    "BlobRange": {
+      "description": "A nonempty checked byte range inside a registered blob.",
+      "type": "object",
+      "required": [
+        "len",
+        "offset"
+      ],
+      "properties": {
+        "len": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "offset": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Capability": {
+      "description": "A capability an engine can provide.",
+      "oneOf": [
+        {
+          "description": "Open and inspect a document container.",
+          "type": "string",
+          "enum": [
+            "document.open"
+          ]
+        },
+        {
+          "description": "Render a document page.",
+          "type": "string",
+          "enum": [
+            "page.render"
+          ]
+        },
+        {
+          "description": "Extract native text.",
+          "type": "string",
+          "enum": [
+            "text.extract"
+          ]
+        },
+        {
+          "description": "Detect layout regions.",
+          "type": "string",
+          "enum": [
+            "layout.detect"
+          ]
+        },
+        {
+          "description": "Determine reading order.",
+          "type": "string",
+          "enum": [
+            "reading-order.detect"
+          ]
+        },
+        {
+          "description": "OCR a complete page.",
+          "type": "string",
+          "enum": [
+            "ocr.page"
+          ]
+        },
+        {
+          "description": "OCR one region.",
+          "type": "string",
+          "enum": [
+            "ocr.region"
+          ]
+        },
+        {
+          "description": "Recognize a table.",
+          "type": "string",
+          "enum": [
+            "table.recognize"
+          ]
+        },
+        {
+          "description": "Recognize a formula.",
+          "type": "string",
+          "enum": [
+            "formula.recognize"
+          ]
+        },
+        {
+          "description": "Score evidence quality.",
+          "type": "string",
+          "enum": [
+            "quality.score"
+          ]
+        }
+      ]
+    },
+    "DeviceId": {
+      "type": "string"
+    },
+    "DeviceInventory": {
+      "description": "Runtime-independent facts about one physical device.",
+      "type": "object",
+      "required": [
+        "id",
+        "memory_available",
+        "memory_total"
+      ],
+      "properties": {
+        "id": {
+          "description": "Physical device identity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/DeviceId"
+            }
+          ]
+        },
+        "memory_available": {
+          "description": "Currently available device memory.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "memory_total": {
+          "description": "Total device memory.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "metadata": {
+          "description": "Deterministically ordered provider metadata.",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "EngineRequest": {
+      "description": "Serializable engine execution request.",
+      "type": "object",
+      "required": [
+        "capability",
+        "input",
+        "request_id"
+      ],
+      "properties": {
+        "capability": {
+          "description": "Requested capability.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Capability"
+            }
+          ]
+        },
+        "deadline": {
+          "description": "Relative deadline from receipt.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "deterministic_seed": {
+          "description": "Deterministic seed when an engine supports seeded behavior.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "input": {
+          "description": "Immutable host-scoped input.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ScopedBlob"
+            }
+          ]
+        },
+        "page_index": {
+          "description": "Optional zero-based page index.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "parameters": {
+          "description": "Normalized deterministic parameters.",
+          "default": {},
+          "type": "object",
+          "additionalProperties": true
+        },
+        "request_id": {
+          "description": "Correlation identity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RequestId"
+            }
+          ]
+        }
+      }
+    },
+    "Estimate_for_uint32": {
+      "description": "A value that is either known or explicitly unknown.",
+      "oneOf": [
+        {
+          "description": "A measured or estimated value is available.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "known"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Estimate_for_uint64": {
+      "description": "A value that is either known or explicitly unknown.",
+      "oneOf": [
+        {
+          "description": "A measured or estimated value is available.",
+          "type": "object",
+          "required": [
+            "status",
+            "value"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "known"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "No defensible value is available.",
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "HardwareInventory": {
+      "description": "Hardware inventory supplied by the runtime to candidate estimation.",
+      "type": "object",
+      "required": [
+        "logical_cpus",
+        "ram_available",
+        "ram_total"
+      ],
+      "properties": {
+        "devices": {
+          "description": "Physical compute devices.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeviceInventory"
+          }
+        },
+        "logical_cpus": {
+          "description": "Logical CPU count when known.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint32"
+            }
+          ]
+        },
+        "ram_available": {
+          "description": "Currently available host RAM.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        },
+        "ram_total": {
+          "description": "Total host RAM.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Estimate_for_uint64"
+            }
+          ]
+        }
+      }
+    },
+    "HealthRequest": {
+      "description": "Health-check depth requested by the host.",
+      "oneOf": [
+        {
+          "description": "Check only immediate readiness.",
+          "type": "string",
+          "enum": [
+            "shallow"
+          ]
+        },
+        {
+          "description": "Check optional dependencies and model readiness without inference.",
+          "type": "string",
+          "enum": [
+            "dependencies"
+          ]
+        }
+      ]
+    },
+    "HostMessage": {
+      "description": "Host-to-engine semantic message.",
+      "oneOf": [
+        {
+          "description": "Register one already host-scoped immutable byte range for later execution.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "type": "object",
+              "required": [
+                "blob",
+                "bytes"
+              ],
+              "properties": {
+                "blob": {
+                  "description": "Normalized child-local scope. Its range starts at zero.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/ScopedBlob"
+                    }
+                  ]
+                },
+                "bytes": {
+                  "description": "Exact bytes covered by the scope.",
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "minimum": 0.0
+                  }
+                }
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "register_blob"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Release child-local bytes after request completion.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "$ref": "#/definitions/BlobId"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "release_blob"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Request the descriptor again.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "discover"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Check readiness.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "$ref": "#/definitions/HealthRequest"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Enumerate candidates against host inventory.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "type": "object",
+              "required": [
+                "inventory",
+                "request"
+              ],
+              "properties": {
+                "inventory": {
+                  "description": "Host hardware inventory.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/HardwareInventory"
+                    }
+                  ]
+                },
+                "request": {
+                  "description": "Semantic engine request.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/EngineRequest"
+                    }
+                  ]
+                }
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "estimate"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Execute one semantic request.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "$ref": "#/definitions/EngineRequest"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "execute"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Cancel another request ID.",
+          "type": "object",
+          "required": [
+            "body",
+            "type"
+          ],
+          "properties": {
+            "body": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "cancel"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Liveness probe.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "ping"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Graceful shutdown request.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "shutdown"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "MediaType": {
+      "type": "string"
+    },
+    "RequestId": {
+      "type": "string"
+    },
+    "ScopedBlob": {
+      "description": "An immutable blob capability passed to an engine.",
+      "type": "object",
+      "required": [
+        "id",
+        "media_type",
+        "range"
+      ],
+      "properties": {
+        "expected_digest": {
+          "description": "Optional digest the host must verify before resolution.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "description": "Host-issued opaque capability token.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlobId"
+            }
+          ]
+        },
+        "media_type": {
+          "description": "Content media type.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/MediaType"
+            }
+          ]
+        },
+        "range": {
+          "description": "Checked byte range within the registered blob.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlobRange"
+            }
+          ]
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    }
+  }
+}

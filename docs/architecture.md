@@ -22,8 +22,9 @@ ferrodoc-core
 - `ferrodoc-core` owns validated runtime-agnostic primitives: geometry, quantities, digests, stable IDs, scoped blobs, model manifests, resource estimates, device/backend/placement axes, schema versions, and provenance.
 - `ferrodoc-ir` owns persistent document semantics and canonical evidence-graph JSON.
 - `ferrodoc-engine-api` owns blocking engine semantics, descriptors, health, estimates, requests, responses, cancellation, deadlines, and errors.
-- `ferrodoc-protocol` owns versioned process message schemas. Framing and process I/O enter in Phase 3.
-- `ferrodoc-runtime` owns embedded registration, native-quality routing, evidence append, deterministic reconciliation, plans, and traces. Scheduling, process hosting, caching, and model storage remain later modules.
+- `ferrodoc-protocol` owns versioned process message schemas and bounded length-prefixed CBOR framing.
+- `ferrodoc-plugin-sdk` is the thin stdin/stdout server wrapper; protocol stdout never carries diagnostics.
+- `ferrodoc-runtime` owns embedded registration, the bounded isolated process host, native-quality routing, evidence append, deterministic reconciliation, plans, and traces. Scheduling, caching, and model storage remain later modules.
 - `ferrodoc-pdf` performs bounded inspection/native extraction with lopdf and deterministic pure-Rust rasterization with Hayro.
 - `ferrodoc-layout-rulebased` and `ferrodoc-engine-ocrs` implement the common engine trait. OCRS model bytes are injected explicitly and never acquired by the engine.
 - `ferrodoc-render` emits deterministic Markdown, semantic HTML, and canonical full-evidence JSON.
@@ -37,7 +38,7 @@ The runtime-agnostic contract crates contain no OCR, PDF parser, GPU, model runt
 
 ## Trust boundaries
 
-Engine request schemas carry `BlobId` plus a checked, nonempty `BlobRange`; they never carry a host path. The embedded host verifies token, range, and digest before returning bytes. Filesystem containment and adversarial process-boundary tests enter with process transport in Phase 3.
+Engine request schemas carry `BlobId` plus a checked, nonempty `BlobRange`; they never carry a host path. Embedded and process hosts verify token, range, media type, and digest before returning bytes. Process launch accepts explicit absolute executables or exact names under caller-provided trusted roots; it never searches the current directory.
 
 PDF input is hostile. `ferrodoc-pdf` applies byte limits before parsing and defines page, object, recursion, and raster limits for Phase 2 implementations.
 

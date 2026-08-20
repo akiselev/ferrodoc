@@ -342,7 +342,7 @@ pub trait Engine: Send {
 
     /// Enumerates compatible placements and conservative estimates.
     fn estimate(
-        &self,
+        &mut self,
         request: &EngineRequest,
         inventory: &HardwareInventory,
     ) -> Result<Vec<EngineCandidate>, EngineError>;

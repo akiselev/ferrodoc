@@ -5,12 +5,14 @@ members = [
   "crates/ferrodoc-engine-api",
   "crates/ferrodoc-ir",
   "crates/ferrodoc-pdf",
+  "crates/ferrodoc-plugin-sdk",
   "crates/ferrodoc-protocol",
   "crates/ferrodoc-render",
   "crates/ferrodoc-runtime",
   "crates/ferrodoc-cli",
   "engines/ferrodoc-layout-rulebased",
   "engines/ferrodoc-engine-ocrs",
+  "engines/ferrodoc-engine-mock",
   "tools/xtask",
 ]
 default-members = ["crates/ferrodoc-core"]
@@ -24,6 +26,7 @@ authors = ["Ferrodoc contributors"]
 
 [workspace.dependencies]
 chrono = { version = "0.4", features = ["serde"] }
+ciborium = "0.2"
 hex = "0.4"
 hayro = "0.7.0"
 lopdf = { version = "0.36.0", default-features = false }
