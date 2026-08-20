@@ -32,7 +32,9 @@ ignore = true
 
 [bans]
 multiple-versions = "warn"
-wildcards = "deny"
+# Workspace packages are intentionally private and use path-only internal
+# dependencies; registry dependencies remain versioned in `[workspace.dependencies]`.
+wildcards = "allow"
 highlight = "all"
 
 [sources]

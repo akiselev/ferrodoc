@@ -38,7 +38,7 @@ chrono = { version = "0.4", features = ["serde"] }
 ciborium = "0.2"
 hex = "0.4"
 hayro = "0.7.0"
-lopdf = { version = "0.36.0", default-features = false }
+lopdf = { version = "0.44.0", default-features = false }
 ocrs = "0.12.2"
 proptest = "1.7"
 schemars = "0.8"
