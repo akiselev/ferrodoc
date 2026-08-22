@@ -10,7 +10,7 @@ Phase 6 qualifies the native PDF, rule-based layout, OCRS, deterministic mock, o
 
 Phase 7 adds digest-bound routing examples, deterministic baselines, guarded learned recommendations, and an immutable experiment ledger. The fixed routing calibration is intentionally negative: its stump does not beat the deterministic held-out baseline and is therefore rejected rather than enabled. See [routing and research](docs/research.md).
 
-The implementation sequence and acceptance gates are defined in [PLAN.md](PLAN.md). Current work is summarized in [STATUS.md](STATUS.md). CLI and protocol compatibility are documented in [docs/cli.md](docs/cli.md) and [docs/protocol.md](docs/protocol.md); security and release policy are in [docs/security.md](docs/security.md) and [docs/release.md](docs/release.md).
+The recovery/v0.2 implementation sequence and acceptance gates are defined in [PLAN.md](PLAN.md). The active proposed post-v0.2 program is [progressive evidence enrichment](docs/progressive-enrichment.md): immutable evidence deltas, content-identifiable document states, capability/page/region-scoped execution, cheap corpus baselines, and targeted higher-cost refinements. Current work is summarized in [STATUS.md](STATUS.md). CLI and protocol compatibility are documented in [docs/cli.md](docs/cli.md) and [docs/protocol.md](docs/protocol.md); security and release policy are in [docs/security.md](docs/security.md) and [docs/release.md](docs/release.md).
 
 ## Prerequisites
 
@@ -79,4 +79,6 @@ Ferrodoc is dual-licensed under MIT or Apache-2.0.
 
 ## Roadmap
 
-Post-v0.2 work may add specialized table, formula, handwriting, and document-VLM engines; richer reconciliation; larger independently governed benchmarks; region-level routing; and platform sandboxes. These are not qualified v0.2 capabilities. See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) and the plan's post-v0.2 roadmap.
+The next proposed program is [progressive evidence enrichment](docs/progressive-enrichment.md). It extends the current evidence graph into immutable `EvidenceDelta` artifacts and `DocumentStateManifest` states, adds `survey`/`baseline` corpus profiles, capability-scoped page/region refinement, materialized checkpoints, artifact-backed reuse, and an external goal/value planner surface for systems such as Foundry.
+
+Specialized table, formula, handwriting, diagram, and document-VLM engines become targeted enrichment capabilities rather than mandatory whole-document passes. Richer reconciliation, larger independently governed benchmarks, region-level routing, and platform sandboxes remain later candidates. These are not qualified v0.2 capabilities. See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md), the recovery plan's post-v0.2 roadmap, and the progressive enrichment plan.
