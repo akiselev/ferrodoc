@@ -98,7 +98,7 @@ fn table_wrapper_matches_embedded_when_binary_is_provided() {
     let region_id = RegionId::derive(&[b"table-process-region"]);
     let geometry = PageRect {
         page_index: 0,
-        rect: Rect::new(10.0, 10.0, 300.0, 90.0, CoordinateSpace::Pdf, Unit::Point).unwrap(),
+        rect: Rect::new(0.0, 0.0, 595.28, 841.89, CoordinateSpace::Pdf, Unit::Point).unwrap(),
         source_transform: CoordinateTransform::IDENTITY,
     };
     let request = EngineRequest {
@@ -113,9 +113,9 @@ fn table_wrapper_matches_embedded_when_binary_is_provided() {
             SOURCE_TEXT_EVIDENCE_PARAMETER.into(),
             serde_json::to_value(vec![SourceTextEvidence {
                 evidence_id: EvidenceId::derive(&[b"table-source-text"]),
-                text: "Pin | Name\n1 | VCC".into(),
+                text: "Name Description GPIOx General-purpose digital input and output. RP2040 can connect one of a number of internal peripherals to each GPIO, or control GPIOs directly from software.".into(),
                 geometry: Some(geometry),
-                geometry_quality: GeometryQuality::Region,
+                geometry_quality: GeometryQuality::PageOnly,
             }])
             .unwrap(),
         )]),

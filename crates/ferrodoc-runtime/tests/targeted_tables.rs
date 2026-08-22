@@ -146,6 +146,85 @@ fn targeted_table_refinement_retains_old_hypothesis_and_leaves_other_page_unchan
     assert_eq!(cold.deltas, warm.deltas);
 }
 
+#[test]
+fn native_name_description_fragment_prefers_honest_page_only_source() {
+    let (bytes, mut document, manifest, target, _) = fixture();
+    let source_text = include_str!("../../../fixtures/table/name-description-fragment-v1.json");
+    let source_text =
+        serde_json::from_str::<serde_json::Value>(source_text).unwrap()["source_text"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+    let page = &mut document.pages[0];
+    let bounds = page.bounds;
+    let region = &mut page.regions[0];
+    let native_id = EvidenceId::derive(&[b"native-name-description-fragment"]);
+    region.evidence[0].id = native_id.clone();
+    region.evidence[0].content = EvidenceContent::Text {
+        text: source_text.clone(),
+    };
+    region.evidence[0].geometry = Some(bounds);
+    region.evidence[0].geometry_quality = GeometryQuality::PageOnly;
+    let mut coarse_duplicate = region.evidence[0].clone();
+    coarse_duplicate.id = EvidenceId::derive(&[b"coarse-name-description-fragment"]);
+    coarse_duplicate.geometry = Some(region.geometry);
+    coarse_duplicate.geometry_quality = GeometryQuality::Region;
+    region.evidence.push(coarse_duplicate);
+    document.validate_evidence_grade().unwrap();
+
+    let request = EnrichmentRequest {
+        request_id: RequestId::derive(&[b"fp3-name-description-fragment"]),
+        source: ScopedBlob {
+            id: BlobId::new("source-pdf").unwrap(),
+            range: BlobRange::new(0, bytes.len() as u64).unwrap(),
+            media_type: MediaType::new("application/pdf").unwrap(),
+            expected_digest: Some(Sha256Digest::of_bytes(&bytes)),
+        },
+        input_state_id: manifest.id().unwrap(),
+        goals: vec![CapabilityGoal {
+            capability: Capability::TableRecognize,
+            scope: RefinementScope::Regions {
+                regions: BTreeSet::from([target]),
+            },
+        }],
+    };
+    let mut runtime = runtime();
+    let plan = match runtime.plan(&request, &document, &manifest).unwrap() {
+        EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
+        other => panic!("unexpected planning outcome: {other:?}"),
+    };
+    let refined = runtime
+        .execute(&request, &plan, bytes, &document, &manifest)
+        .unwrap();
+    refined.document.validate_evidence_grade().unwrap();
+    let tables = refined.document.pages[0].regions[0]
+        .evidence
+        .iter()
+        .filter_map(|evidence| match &evidence.content {
+            EvidenceContent::Table { cells, .. } => Some(cells),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(tables.len(), 1, "duplicate text must produce one table");
+    assert!(tables[0].iter().all(|cell| {
+        cell.geometry == Some(bounds)
+            && cell.geometry_quality == GeometryQuality::PageOnly
+            && cell.source_spans
+                == vec![ferrodoc_ir::TextSourceSpan {
+                    evidence_id: native_id.clone(),
+                    start: cell.source_spans[0].start,
+                    end: cell.source_spans[0].end,
+                }]
+            && source_text
+                .get(cell.source_spans[0].start as usize..cell.source_spans[0].end as usize)
+                == Some(cell.text.as_str())
+    }));
+    assert_eq!(
+        refined.deltas[0].required_evidence_ids,
+        BTreeSet::from([native_id])
+    );
+}
+
 fn runtime() -> EnrichmentRuntime {
     runtime_with_cache(None)
 }
@@ -164,7 +243,7 @@ fn runtime_with_cache(cache: Option<StageCache>) -> EnrichmentRuntime {
             EnrichmentStageDescriptor {
                 id: "table.structure.rulebased".into(),
                 stage: Stage::Layout,
-                build: Sha256Digest::of_bytes(b"table-rulebased-build-v1"),
+                build: Sha256Digest::of_bytes(b"table-rulebased-build-v2"),
                 model_digest: None,
                 parameters: BTreeMap::new(),
                 produces: Capability::TableRecognize,

@@ -1,0 +1,23 @@
+{
+  "schema": "ferrodoc-real-table-oracle/1",
+  "source": "RP2040 Datasheet, February 2025",
+  "source_pdf_sha256": "be56fbb75ba0ae9e26558a73c93ac3e75c2ad4e6878d3b6703de2a76d886ea8c",
+  "source_pdf_bytes": 5301205,
+  "pdf_page_number": 12,
+  "page_index": 11,
+  "table_label": "Table 1. Pin Descriptions",
+  "page_id": "page_45b1e1c879be49ccbb3690a5fbc85e3cd5f5da1da0d66a259a22b3655098128d",
+  "region_id": "region_f3c4878cf4d3c3d881b702be8d1f6583d880c3a8ccaa6f07456a018cee91799c",
+  "source_evidence_id": "evidence_01467b6ad3d408f13912ed4c37b7f1031c4b57e88bf0c205915c853d4f5e2357",
+  "source_text_sha256": "43b0c7d439f98c55e3dd2279a2259f041f40a0849067c4ac5a98839865ebe4ab",
+  "input_state_id": "state_540d3d972453cef43952b2ba6c52dbcd24184b909b9d480aa1468338bdc0d40f",
+  "output_state_id": "state_c154cf48c129b38893405354043403ef034af1ebe46a7a8cbbbf609960c3d4ae",
+  "delta_id": "delta_cf2de5dd2dd5336796e72107a940d8a33f6e2ed0a683bcd6307ddf4403dbf1fc",
+  "delta_artifact_sha256": "e7c563b4b7355bb823534aecf5cb3d32c0376a0e259fe3cc34abd5f1cda56f97",
+  "table_evidence_id": "evidence_8a30608e6fc2b0e3012c55170fb219051aae1add6e98c014a93cf51a3e501584",
+  "geometry_quality": "page_only",
+  "expected_rows": 2,
+  "expected_columns": 2,
+  "expected_cells": ["Name", "Description", "GPIOx", "General-purpose digital input and output. RP2040 can connect one of a number of internal peripherals to each GPIO, or control GPIOs directly from software."],
+  "fixture_note": "Metadata-only oracle. The rights-reviewed source PDF remains external and is never committed. This bounded fragment is execution evidence, not a table-recall corpus."
+}

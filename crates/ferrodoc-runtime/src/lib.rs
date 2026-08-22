@@ -2335,7 +2335,7 @@ mod tests {
                     EnrichmentStageDescriptor {
                         id: "table.structure.rulebased".into(),
                         stage: Stage::Layout,
-                        build: Sha256Digest::of_bytes(b"table-rulebased-build-v1"),
+                        build: Sha256Digest::of_bytes(b"table-rulebased-build-v2"),
                         model_digest: None,
                         parameters: BTreeMap::new(),
                         produces: Capability::TableRecognize,

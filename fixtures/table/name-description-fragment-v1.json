@@ -1,0 +1,12 @@
+{
+  "grammar": "name_description_fragment_v1",
+  "source_text": "Name Description GPIOx General-purpose digital input and output. RP2040 can connect one of a number of internal peripherals to each GPIO, or control GPIOs directly from software.",
+  "rows": 2,
+  "columns": 2,
+  "cells": [
+    { "row": 0, "column": 0, "text": "Name", "start": 0, "end": 4 },
+    { "row": 0, "column": 1, "text": "Description", "start": 5, "end": 16 },
+    { "row": 1, "column": 0, "text": "GPIOx", "start": 17, "end": 22 },
+    { "row": 1, "column": 1, "text": "General-purpose digital input and output. RP2040 can connect one of a number of internal peripherals to each GPIO, or control GPIOs directly from software.", "start": 23, "end": 178 }
+  ]
+}

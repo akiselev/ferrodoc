@@ -2,7 +2,9 @@
 //!
 //! This bounded engine is an evidence-contract oracle, not a general table model. It recognizes
 //! consistent, nonempty pipe-delimited rows in existing target-region text evidence and cites the
-//! exact UTF-8 byte range used for every cell.
+//! exact UTF-8 byte range used for every cell. A second deliberately narrow grammar recognizes a
+//! `Name Description` header followed by one symbol and a sentence description. This covers a
+//! common born-digital datasheet table fragment without claiming general visual table recovery.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -145,8 +147,20 @@ impl Engine for RuleBasedTableEngine {
             .map_err(|error| internal(error.to_string()))?;
         let layer_id = LayerId::derive(&[provenance_digest.as_bytes()]);
         let mut evidence = Vec::new();
+        let mut parsed_source_text = BTreeSet::new();
         for source in sources {
+            // Reconciliation can retain byte-identical native and layout hypotheses in one region.
+            // One semantic table is sufficient; preserve deterministic source order so the native,
+            // honestly page-only source wins over a later coarse layout duplicate.
+            if !parsed_source_text.insert(source.text.clone()) {
+                continue;
+            }
             if let Some((rows, columns, cells)) = parse_table(&source)? {
+                let grammar = if source.text.contains('|') {
+                    "nonempty_pipe_rows_v1"
+                } else {
+                    "name_description_fragment_v1"
+                };
                 evidence.push(Evidence {
                     id: EvidenceId::derive(&[
                         provenance_digest.as_bytes(),
@@ -164,7 +178,7 @@ impl Engine for RuleBasedTableEngine {
                     provenance: provenance.clone(),
                     engine_metadata: BTreeMap::from([(
                         "grammar".into(),
-                        serde_json::json!("nonempty_pipe_rows_v1"),
+                        serde_json::json!(grammar),
                     )]),
                 });
             }
@@ -207,6 +221,9 @@ fn require_request(request: &EngineRequest) -> Result<(), EngineError> {
 fn parse_table(
     source: &SourceTextEvidence,
 ) -> Result<Option<(u32, u32, Vec<TableCell>)>, EngineError> {
+    if !source.text.contains('|') {
+        return parse_name_description_fragment(source);
+    }
     let mut parsed_rows = Vec::new();
     let mut parsed_cells = 0_usize;
     let mut line_start = 0_usize;
@@ -272,6 +289,65 @@ fn parse_table(
         u32::try_from(columns).expect("bounded columns"),
         cells,
     )))
+}
+
+fn parse_name_description_fragment(
+    source: &SourceTextEvidence,
+) -> Result<Option<(u32, u32, Vec<TableCell>)>, EngineError> {
+    const HEADER: &str = "Name Description ";
+    let Some(body) = source.text.strip_prefix(HEADER) else {
+        return Ok(None);
+    };
+    if body.contains(['\r', '\n', '|']) || body.len() > 4 * 1_024 {
+        return Ok(None);
+    }
+    let Some(separator) = body.find(' ') else {
+        return Ok(None);
+    };
+    let name = &body[..separator];
+    let description = body[separator + 1..].trim_end();
+    if name.is_empty()
+        || name.len() > 64
+        || !name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "_/-".contains(character))
+        || description.len() < 16
+        || !description.ends_with(['.', '!', '?'])
+    {
+        return Ok(None);
+    }
+    let description_start = HEADER
+        .len()
+        .checked_add(separator)
+        .and_then(|offset| offset.checked_add(1))
+        .ok_or_else(|| resource("source offset overflow"))?;
+    let description_end = description_start
+        .checked_add(description.len())
+        .ok_or_else(|| resource("source offset overflow"))?;
+    let fields = [
+        ("Name", 0_usize, 4_usize),
+        ("Description", 5_usize, 16_usize),
+        (name, HEADER.len(), HEADER.len() + separator),
+        (description, description_start, description_end),
+    ];
+    let mut cells = Vec::with_capacity(fields.len());
+    for (index, (text, start, end)) in fields.into_iter().enumerate() {
+        cells.push(TableCell {
+            row: u32::try_from(index / 2).expect("bounded row"),
+            column: u32::try_from(index % 2).expect("bounded column"),
+            row_span: 1,
+            column_span: 1,
+            text: text.to_owned(),
+            geometry: source.geometry,
+            geometry_quality: source.geometry_quality,
+            source_spans: vec![TextSourceSpan {
+                evidence_id: source.evidence_id.clone(),
+                start: u32::try_from(start).map_err(|_| resource("source offset overflow"))?,
+                end: u32::try_from(end).map_err(|_| resource("source offset overflow"))?,
+            }],
+        });
+    }
+    Ok(Some((2, 2, cells)))
 }
 
 fn parse_row(line: &str, line_start: usize) -> Result<Option<Vec<ParsedCell>>, EngineError> {
@@ -369,6 +445,44 @@ mod tests {
             parse_table(&source("ordinary paragraph"))
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn bounded_name_description_fragment_has_exact_source_spans() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../fixtures/table/name-description-fragment-v1.json"
+        ))
+        .unwrap();
+        let fixture_source = source(fixture["source_text"].as_str().unwrap());
+        let (rows, columns, cells) = parse_table(&fixture_source).unwrap().unwrap();
+        assert_eq!((rows, columns), (2, 2));
+        assert_eq!(cells.len(), 4);
+        for (cell, expected) in cells.iter().zip(fixture["cells"].as_array().unwrap()) {
+            assert_eq!(cell.row, expected["row"].as_u64().unwrap() as u32);
+            assert_eq!(cell.column, expected["column"].as_u64().unwrap() as u32);
+            assert_eq!(cell.text, expected["text"].as_str().unwrap());
+            let span = &cell.source_spans[0];
+            assert_eq!(span.start, expected["start"].as_u64().unwrap() as u32);
+            assert_eq!(span.end, expected["end"].as_u64().unwrap() as u32);
+            assert_eq!(
+                fixture_source
+                    .text
+                    .get(span.start as usize..span.end as usize),
+                Some(cell.text.as_str())
+            );
+        }
+        assert!(
+            parse_table(&source("Name Description GPIOx too short"))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            parse_table(&source(
+                "Prefix Name Description GPIOx A valid-looking sentence."
+            ))
+            .unwrap()
+            .is_none()
         );
     }
 

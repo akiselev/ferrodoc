@@ -56,8 +56,9 @@ Ferrodoc never downloads models during build or conversion. The checked-in [OCRS
 Use `--document-profile baseline` for the FP2 full-document baseline: every survey-nonblank page is rendered and OCRed even when native text is present. Native and OCR evidence remain separate, and native PDF text is page-only geometry unless a future backend supplies qualified positions.
 
 FP3 adds a bounded page-qualified table refinement engine for existing pipe-delimited text
-hypotheses. It preserves exact source spans and inherits source geometry without inventing cell
-boxes. This is a deterministic contract oracle, not a claim of general datasheet or scanned-table
+hypotheses and one narrowly qualified born-digital `Name Description` fragment. It preserves exact
+source spans and inherits source geometry without inventing cell boxes. This is deterministic
+contract and retained-real-document evidence, not a claim of general datasheet or scanned-table
 quality; see [FDX3 targeted tables](docs/fdx/FDX3_TARGETED_TABLES.md).
 
 FP4 adds a runtime-owned durable storage-provider seam for immutable deltas, retained state
