@@ -79,6 +79,7 @@ fn fixture() -> Document {
                             text: "Native title".into(),
                         },
                         geometry: Some(geometry),
+                        geometry_quality: GeometryQuality::Region,
                         confidence: None,
                         provenance: provenance(input_digest, Stage::NativeExtract, "native-pdf"),
                         engine_metadata: BTreeMap::new(),
@@ -90,6 +91,7 @@ fn fixture() -> Document {
                             text: "OCR title".into(),
                         },
                         geometry: Some(geometry),
+                        geometry_quality: GeometryQuality::Region,
                         confidence: Some(Probability::new(0.8).unwrap()),
                         provenance: provenance(input_digest, Stage::Ocr, "mock-ocr"),
                         engine_metadata: BTreeMap::new(),
@@ -138,6 +140,41 @@ fn additive_unknown_fields_are_ignored_within_a_major_version() {
 }
 
 #[test]
+fn additive_geometry_quality_defaults_preserve_older_v1_documents() {
+    let mut value = serde_json::to_value(fixture()).unwrap();
+    for page in value["pages"].as_array_mut().unwrap() {
+        for region in page["regions"].as_array_mut().unwrap() {
+            for evidence in region["evidence"].as_array_mut().unwrap() {
+                evidence.as_object_mut().unwrap().remove("geometry_quality");
+            }
+        }
+    }
+    let decoded: Document = serde_json::from_value(value).unwrap();
+    decoded.validate().unwrap();
+    assert!(
+        decoded.pages[0].regions[0]
+            .evidence
+            .iter()
+            .all(|evidence| evidence.geometry_quality == GeometryQuality::Unknown)
+    );
+}
+
+#[test]
+fn additive_table_evidence_fields_preserve_older_v1_cells() {
+    let cell: TableCell = serde_json::from_value(serde_json::json!({
+        "row": 0,
+        "column": 0,
+        "row_span": 1,
+        "column_span": 1,
+        "text": "legacy"
+    }))
+    .unwrap();
+    assert_eq!(cell.geometry_quality, GeometryQuality::Unknown);
+    assert!(cell.geometry.is_none());
+    assert!(cell.source_spans.is_empty());
+}
+
+#[test]
 fn reading_order_cycles_are_rejected() {
     let mut document = fixture();
     let page = &mut document.pages[0];
@@ -180,11 +217,27 @@ fn checked_in_ir_fixture_reserializes_byte_for_byte() {
 }
 
 #[test]
+fn checked_in_delta_and_state_fixtures_reserialize_byte_for_byte() {
+    let delta_bytes = include_bytes!("../../../fixtures/evidence-delta-v1.json");
+    let delta: EvidenceDelta = serde_json::from_slice(delta_bytes).unwrap();
+    assert_eq!(delta.to_canonical_json().unwrap(), delta_bytes);
+    let state_bytes = include_bytes!("../../../fixtures/document-state-manifest-v1.json");
+    let state: DocumentStateManifest = serde_json::from_slice(state_bytes).unwrap();
+    assert_eq!(state.to_canonical_json().unwrap(), state_bytes);
+}
+
+#[test]
 fn schema_snapshots_match_public_contracts() {
     let expected_ir: serde_json::Value =
         serde_json::from_str(include_str!("../../../schemas/document-ir-v1.json")).unwrap();
     let expected_manifest: serde_json::Value =
         serde_json::from_str(include_str!("../../../schemas/model-manifest-v1.json")).unwrap();
+    let expected_delta: serde_json::Value =
+        serde_json::from_str(include_str!("../../../schemas/evidence-delta-v1.json")).unwrap();
+    let expected_state: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../schemas/document-state-manifest-v1.json"
+    ))
+    .unwrap();
     assert_eq!(
         serde_json::to_value(schemars::schema_for!(Document)).unwrap(),
         expected_ir
@@ -192,6 +245,14 @@ fn schema_snapshots_match_public_contracts() {
     assert_eq!(
         serde_json::to_value(schemars::schema_for!(ferrodoc_core::ModelManifest)).unwrap(),
         expected_manifest
+    );
+    assert_eq!(
+        serde_json::to_value(schemars::schema_for!(EvidenceDelta)).unwrap(),
+        expected_delta
+    );
+    assert_eq!(
+        serde_json::to_value(schemars::schema_for!(DocumentStateManifest)).unwrap(),
+        expected_state
     );
 }
 

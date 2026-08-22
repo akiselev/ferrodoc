@@ -286,6 +286,7 @@ impl Engine for TesseractEngine {
                     .expect("validated image dimensions"),
                     source_transform: CoordinateTransform::IDENTITY,
                 }),
+                geometry_quality: ferrodoc_ir::GeometryQuality::Region,
                 confidence: Some(Probability::new(confidence).expect("clamped confidence")),
                 provenance,
                 engine_metadata: BTreeMap::from([

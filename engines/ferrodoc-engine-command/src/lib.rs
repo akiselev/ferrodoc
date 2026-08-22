@@ -351,6 +351,7 @@ impl Engine for CommandEngine {
                 layer_id: layer_id.clone(),
                 content: EvidenceContent::Text { text },
                 geometry: None,
+                geometry_quality: ferrodoc_ir::GeometryQuality::Unknown,
                 confidence: None,
                 provenance,
                 engine_metadata: BTreeMap::from([(

@@ -95,6 +95,16 @@ stable_id!(DocumentId, "doc", "Stable document identity.");
 stable_id!(PageId, "page", "Stable page identity.");
 stable_id!(RegionId, "region", "Stable region identity.");
 stable_id!(EvidenceId, "evidence", "Stable evidence identity.");
+stable_id!(
+    EvidenceDeltaId,
+    "delta",
+    "Stable logical evidence-delta identity."
+);
+stable_id!(
+    DocumentStateId,
+    "state",
+    "Stable logical document-state identity."
+);
 stable_id!(LayerId, "layer", "Stable source-layer identity.");
 stable_id!(ArtifactId, "artifact", "Stable render-artifact identity.");
 stable_id!(ModelId, "model", "Stable model identity.");

@@ -1,52 +1,118 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Document",
-  "description": "A versioned evidence graph for a document.",
+  "title": "EvidenceDelta",
+  "description": "Immutable append-only evidence produced by one deterministic refinement.",
   "type": "object",
   "required": [
-    "id",
-    "input_digest",
-    "metadata",
-    "pages",
-    "schema_version"
+    "delta_schema",
+    "ir_schema",
+    "producer",
+    "scope",
+    "source_pdf_sha256",
+    "stage"
   ],
   "properties": {
-    "id": {
-      "description": "Stable document identity.",
-      "allOf": [
+    "coverage_delta": {
+      "description": "Additive coverage observations.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CoverageEntry"
+      }
+    },
+    "delta_schema": {
+      "description": "Persistent delta schema tag.",
+      "type": "string"
+    },
+    "diagnostics": {
+      "description": "Deterministic diagnostics.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/DeltaDiagnostic"
+      }
+    },
+    "input_state_id": {
+      "description": "Optional state against which execution was planned. This is a precondition, not state lineage.",
+      "anyOf": [
         {
-          "$ref": "#/definitions/DocumentId"
+          "$ref": "#/definitions/DocumentStateId"
+        },
+        {
+          "type": "null"
         }
       ]
     },
-    "input_digest": {
-      "description": "Original input digest.",
+    "ir_schema": {
+      "description": "Document IR schema interpreted by this delta.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SchemaVersion"
+        }
+      ]
+    },
+    "new_pages": {
+      "description": "Entire new pages, used by survey/baseline deltas.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Page"
+      }
+    },
+    "page_additions": {
+      "description": "Additions to existing pages.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PageDelta"
+      }
+    },
+    "producer": {
+      "description": "Deterministic producer identity.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/DeltaProducer"
+        }
+      ]
+    },
+    "required_evidence_ids": {
+      "description": "Exact evidence prerequisites.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EvidenceId"
+      },
+      "uniqueItems": true
+    },
+    "scope": {
+      "description": "Scope actually processed.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/RefinementScope"
+        }
+      ]
+    },
+    "selection_hints": {
+      "description": "Deterministic reconciliation inputs.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SelectionHint"
+      }
+    },
+    "source_pdf_sha256": {
+      "description": "Exact source PDF identity.",
       "allOf": [
         {
           "$ref": "#/definitions/Sha256Digest"
         }
       ]
     },
-    "metadata": {
-      "description": "Source metadata.",
+    "stage": {
+      "description": "Logical pipeline stage.",
       "allOf": [
         {
-          "$ref": "#/definitions/DocumentMetadata"
-        }
-      ]
-    },
-    "pages": {
-      "description": "Ordered pages.",
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/Page"
-      }
-    },
-    "schema_version": {
-      "description": "Persistent schema version.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/SchemaVersion"
+          "$ref": "#/definitions/Stage"
         }
       ]
     }
@@ -57,6 +123,81 @@
     },
     "BlobId": {
       "type": "string"
+    },
+    "Capability": {
+      "description": "A capability an engine can provide.",
+      "oneOf": [
+        {
+          "description": "Open and inspect a document container.",
+          "type": "string",
+          "enum": [
+            "document.open"
+          ]
+        },
+        {
+          "description": "Render a document page.",
+          "type": "string",
+          "enum": [
+            "page.render"
+          ]
+        },
+        {
+          "description": "Extract native text.",
+          "type": "string",
+          "enum": [
+            "text.extract"
+          ]
+        },
+        {
+          "description": "Detect layout regions.",
+          "type": "string",
+          "enum": [
+            "layout.detect"
+          ]
+        },
+        {
+          "description": "Determine reading order.",
+          "type": "string",
+          "enum": [
+            "reading-order.detect"
+          ]
+        },
+        {
+          "description": "OCR a complete page.",
+          "type": "string",
+          "enum": [
+            "ocr.page"
+          ]
+        },
+        {
+          "description": "OCR one region.",
+          "type": "string",
+          "enum": [
+            "ocr.region"
+          ]
+        },
+        {
+          "description": "Recognize a table.",
+          "type": "string",
+          "enum": [
+            "table.recognize"
+          ]
+        },
+        {
+          "description": "Recognize a formula.",
+          "type": "string",
+          "enum": [
+            "formula.recognize"
+          ]
+        },
+        {
+          "description": "Score evidence quality.",
+          "type": "string",
+          "enum": [
+            "quality.score"
+          ]
+        }
+      ]
     },
     "CoordinateSpace": {
       "description": "Coordinate-space identity carried by every rectangle.",
@@ -93,6 +234,102 @@
       },
       "maxItems": 6,
       "minItems": 6
+    },
+    "CoverageEntry": {
+      "description": "One logical capability coverage observation.",
+      "type": "object",
+      "required": [
+        "capability",
+        "scope",
+        "status"
+      ],
+      "properties": {
+        "capability": {
+          "description": "Capability covered.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Capability"
+            }
+          ]
+        },
+        "scope": {
+          "description": "Scope of the observation.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RefinementScope"
+            }
+          ]
+        },
+        "status": {
+          "description": "Deterministic coverage status or qualifier.",
+          "type": "string"
+        }
+      }
+    },
+    "DeltaDiagnostic": {
+      "description": "Deterministic diagnostic retained with a delta.",
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "description": "Machine-readable diagnostic code.",
+          "type": "string"
+        },
+        "message": {
+          "description": "Bounded deterministic message.",
+          "type": "string"
+        }
+      }
+    },
+    "DeltaProducer": {
+      "description": "Deterministic producer identity for one refinement.",
+      "type": "object",
+      "required": [
+        "build",
+        "configuration_digest",
+        "name",
+        "version"
+      ],
+      "properties": {
+        "build": {
+          "description": "Immutable source/build identity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        },
+        "configuration_digest": {
+          "description": "Normalized configuration identity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        },
+        "model_digest": {
+          "description": "Optional model identity.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "description": "Producer name.",
+          "type": "string"
+        },
+        "version": {
+          "description": "Producer semantic version.",
+          "type": "string"
+        }
+      }
     },
     "DeterministicProvenance": {
       "description": "Cache-relevant provenance. It intentionally contains no clock time, host, or run ID.",
@@ -156,42 +393,8 @@
         }
       }
     },
-    "DocumentId": {
+    "DocumentStateId": {
       "type": "string"
-    },
-    "DocumentMetadata": {
-      "description": "Document metadata with deterministic extension ordering.",
-      "type": "object",
-      "properties": {
-        "authors": {
-          "description": "Ordered author names.",
-          "default": [],
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "extra": {
-          "description": "Additional deterministic metadata.",
-          "default": {},
-          "type": "object",
-          "additionalProperties": true
-        },
-        "language": {
-          "description": "Optional BCP 47 language tag supplied by the source.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "title": {
-          "description": "Optional title.",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
     },
     "Evidence": {
       "description": "One hypothesis produced by a source layer or engine.",
@@ -468,8 +671,81 @@
     "LayerId": {
       "type": "string"
     },
+    "LayerOwner": {
+      "description": "Owner of a source layer added to a page.",
+      "oneOf": [
+        {
+          "description": "Layer describes the entire containing page.",
+          "type": "object",
+          "required": [
+            "kind",
+            "page_id"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "page"
+              ]
+            },
+            "page_id": {
+              "$ref": "#/definitions/PageId"
+            }
+          }
+        },
+        {
+          "description": "Layer was produced for one page-qualified region.",
+          "type": "object",
+          "required": [
+            "kind",
+            "page_id",
+            "region_id"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "region"
+              ]
+            },
+            "page_id": {
+              "$ref": "#/definitions/PageId"
+            },
+            "region_id": {
+              "$ref": "#/definitions/RegionId"
+            }
+          }
+        }
+      ]
+    },
     "MediaType": {
       "type": "string"
+    },
+    "OwnedSourceLayer": {
+      "description": "A source layer with explicit page/region ownership.",
+      "type": "object",
+      "required": [
+        "layer",
+        "owner"
+      ],
+      "properties": {
+        "layer": {
+          "description": "Immutable layer.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SourceLayer"
+            }
+          ]
+        },
+        "owner": {
+          "description": "Explicit owner.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/LayerOwner"
+            }
+          ]
+        }
+      }
     },
     "Page": {
       "description": "One document page and all evidence attached to it.",
@@ -536,6 +812,63 @@
         }
       }
     },
+    "PageDelta": {
+      "description": "Additions owned by one existing page.",
+      "type": "object",
+      "required": [
+        "page_id"
+      ],
+      "properties": {
+        "page_id": {
+          "description": "Existing page receiving additions.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PageId"
+            }
+          ]
+        },
+        "reading_order_edges": {
+          "description": "Page-owned reading-order edges.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReadingOrderEdge"
+          }
+        },
+        "region_evidence": {
+          "description": "Evidence additions grouped by their page-qualified region owner.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RegionEvidenceAddition"
+          }
+        },
+        "regions": {
+          "description": "New page-owned semantic regions.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Region"
+          }
+        },
+        "render_artifacts": {
+          "description": "Page-owned render artifacts.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RenderArtifact"
+          }
+        },
+        "source_layers": {
+          "description": "Page- or region-owned source layers.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OwnedSourceLayer"
+          }
+        }
+      }
+    },
     "PageId": {
       "type": "string"
     },
@@ -567,6 +900,32 @@
           "allOf": [
             {
               "$ref": "#/definitions/CoordinateTransform"
+            }
+          ]
+        }
+      }
+    },
+    "PageRegionRef": {
+      "description": "A page-qualified region address. Region IDs are only page-local.",
+      "type": "object",
+      "required": [
+        "page_id",
+        "region_id"
+      ],
+      "properties": {
+        "page_id": {
+          "description": "Containing page.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PageId"
+            }
+          ]
+        },
+        "region_id": {
+          "description": "Page-local region.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RegionId"
             }
           ]
         }
@@ -639,6 +998,72 @@
         }
       }
     },
+    "RefinementScope": {
+      "description": "Scope actually processed by a refinement.",
+      "oneOf": [
+        {
+          "description": "Whole document.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "document"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Explicit pages.",
+          "type": "object",
+          "required": [
+            "kind",
+            "page_ids"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "pages"
+              ]
+            },
+            "page_ids": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/PageId"
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        {
+          "description": "Explicit page-qualified regions.",
+          "type": "object",
+          "required": [
+            "kind",
+            "regions"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "regions"
+              ]
+            },
+            "regions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/PageRegionRef"
+              },
+              "uniqueItems": true
+            }
+          }
+        }
+      ]
+    },
     "Region": {
       "description": "A semantic page region containing competing evidence.",
       "type": "object",
@@ -688,6 +1113,31 @@
             },
             {
               "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "RegionEvidenceAddition": {
+      "description": "Evidence appended to one page-qualified region.",
+      "type": "object",
+      "required": [
+        "evidence",
+        "region_id"
+      ],
+      "properties": {
+        "evidence": {
+          "description": "Append-only evidence records.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Evidence"
+          }
+        },
+        "region_id": {
+          "description": "Page-local region receiving the evidence.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RegionId"
             }
           ]
         }
@@ -915,6 +1365,32 @@
           "allOf": [
             {
               "$ref": "#/definitions/SelectionReason"
+            }
+          ]
+        }
+      }
+    },
+    "SelectionHint": {
+      "description": "Reconciliation input for a page-qualified region.",
+      "type": "object",
+      "required": [
+        "region",
+        "selected"
+      ],
+      "properties": {
+        "region": {
+          "description": "Region receiving the hint.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PageRegionRef"
+            }
+          ]
+        },
+        "selected": {
+          "description": "Proposed deterministic selected view.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SelectedView"
             }
           ]
         }

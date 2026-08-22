@@ -1190,6 +1190,7 @@ fn native_evidence(
         layer_id: layer_id.clone(),
         content: EvidenceContent::Text { text: text.into() },
         geometry: Some(geometry),
+        geometry_quality: ferrodoc_ir::GeometryQuality::Region,
         confidence: None,
         provenance: provenance.clone(),
         engine_metadata: BTreeMap::new(),

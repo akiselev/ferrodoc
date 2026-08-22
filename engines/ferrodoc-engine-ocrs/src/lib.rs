@@ -222,6 +222,7 @@ impl Engine for OcrsEngine {
                     .expect("validated image dimensions"),
                     source_transform: CoordinateTransform::IDENTITY,
                 }),
+                geometry_quality: ferrodoc_ir::GeometryQuality::Region,
                 confidence: None,
                 provenance,
                 engine_metadata: BTreeMap::from([(

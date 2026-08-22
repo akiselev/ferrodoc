@@ -6,8 +6,9 @@ use ferrodoc_core::{
     Stage, Unit,
 };
 use ferrodoc_ir::{
-    Document, DocumentMetadata, Evidence, EvidenceContent, Page, Region, RegionKind, SelectedView,
-    SelectionReason, SourceLayer, SourceLayerKind,
+    DOCUMENT_STATE_SCHEMA, DeltaProducer, Document, DocumentMetadata, DocumentStateManifest,
+    EVIDENCE_DELTA_SCHEMA, Evidence, EvidenceContent, EvidenceDelta, Page, RefinementScope, Region,
+    RegionKind, SelectedView, SelectionReason, SourceLayer, SourceLayerKind,
 };
 use schemars::schema_for;
 
@@ -25,11 +26,67 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         schema_dir.join("document-ir-v1.json"),
         &schema_for!(Document),
     )?;
+    write_json(
+        schema_dir.join("evidence-delta-v1.json"),
+        &schema_for!(EvidenceDelta),
+    )?;
+    write_json(
+        schema_dir.join("document-state-manifest-v1.json"),
+        &schema_for!(DocumentStateManifest),
+    )?;
+    let document = sample_document();
+    let delta = sample_delta(&document);
+    let state = sample_state(&document, &delta);
     fs::write(
         fixture_dir.join("document-ir-v1.json"),
-        sample_document().to_canonical_json()?,
+        document.to_canonical_json()?,
+    )?;
+    fs::write(
+        fixture_dir.join("evidence-delta-v1.json"),
+        delta.to_canonical_json()?,
+    )?;
+    fs::write(
+        fixture_dir.join("document-state-manifest-v1.json"),
+        state.to_canonical_json()?,
     )?;
     Ok(())
+}
+
+fn sample_delta(document: &Document) -> EvidenceDelta {
+    EvidenceDelta {
+        delta_schema: EVIDENCE_DELTA_SCHEMA.into(),
+        source_pdf_sha256: document.input_digest,
+        ir_schema: document.schema_version,
+        stage: Stage::NativeExtract,
+        producer: DeltaProducer {
+            name: "ferrodoc-ir-golden".into(),
+            version: "1.0.0".into(),
+            build: Sha256Digest::of_bytes(b"ferrodoc-ir-golden-build"),
+            model_digest: None,
+            configuration_digest: Sha256Digest::of_bytes(b"ferrodoc-ir-golden-config"),
+        },
+        scope: RefinementScope::Document,
+        input_state_id: None,
+        required_evidence_ids: Default::default(),
+        new_pages: document.pages.clone(),
+        page_additions: Vec::new(),
+        selection_hints: Vec::new(),
+        diagnostics: Vec::new(),
+        coverage_delta: Vec::new(),
+    }
+}
+
+fn sample_state(document: &Document, delta: &EvidenceDelta) -> DocumentStateManifest {
+    DocumentStateManifest {
+        state_schema: DOCUMENT_STATE_SCHEMA.into(),
+        source_pdf_sha256: document.input_digest,
+        ir_schema: document.schema_version,
+        evidence_delta_ids: [delta.id().unwrap()].into_iter().collect(),
+        reconciliation_policy_id: Sha256Digest::of_bytes(b"golden-reconciliation-policy"),
+        coverage: Vec::new(),
+        materialized_ir_checkpoint: None,
+        parent_state_ids: Default::default(),
+    }
 }
 
 fn write_json(
@@ -99,6 +156,7 @@ fn sample_document() -> Document {
                         text: "Ferrodoc evidence fixture".into(),
                     },
                     geometry: Some(heading_bounds),
+                    geometry_quality: ferrodoc_ir::GeometryQuality::Region,
                     confidence: None,
                     provenance,
                     engine_metadata: BTreeMap::new(),

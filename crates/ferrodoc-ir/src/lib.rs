@@ -18,6 +18,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod state;
+
+pub use state::*;
+
 /// Validation or canonical serialization error for an evidence graph.
 #[derive(Debug, Error)]
 pub enum IrError {
@@ -127,6 +131,39 @@ pub enum RegionKind {
     Handwriting,
 }
 
+/// Honest precision of evidence geometry.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+#[schemars(rename_all = "snake_case")]
+pub enum GeometryQuality {
+    /// Glyph-level geometry from the source or a qualified engine.
+    Glyph,
+    /// Word-level geometry.
+    Word,
+    /// Line-level geometry.
+    Line,
+    /// Region-level geometry.
+    Region,
+    /// Only the containing page is known.
+    PageOnly,
+    /// Precision is unknown; callers must not draw a precise highlight.
+    #[default]
+    Unknown,
+}
+
 impl fmt::Display for RegionKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
@@ -176,8 +213,19 @@ impl FromStr for RegionKind {
     }
 }
 
-/// A structured table cell.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// A byte range in an exact text-evidence record.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+pub struct TextSourceSpan {
+    /// Referenced text evidence.
+    pub evidence_id: EvidenceId,
+    /// Inclusive UTF-8 byte offset.
+    pub start: u32,
+    /// Exclusive UTF-8 byte offset.
+    pub end: u32,
+}
+
+/// A structured table cell with resolvable source evidence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TableCell {
     /// Zero-based row.
     pub row: u32,
@@ -189,6 +237,15 @@ pub struct TableCell {
     pub column_span: u32,
     /// Cell text.
     pub text: String,
+    /// Defensible cell geometry when available.
+    #[serde(default)]
+    pub geometry: Option<PageRect>,
+    /// Precision of `geometry`.
+    #[serde(default)]
+    pub geometry_quality: GeometryQuality,
+    /// Exact text evidence used to reconstruct `text`, in reading order.
+    #[serde(default)]
+    pub source_spans: Vec<TextSourceSpan>,
 }
 
 /// Typed evidence payload.
@@ -241,6 +298,9 @@ pub struct Evidence {
     pub content: EvidenceContent,
     /// Optional page geometry.
     pub geometry: Option<PageRect>,
+    /// Honest precision of the supplied geometry.
+    #[serde(default)]
+    pub geometry_quality: GeometryQuality,
     /// Optional calibrated confidence.
     pub confidence: Option<Probability>,
     /// Deterministic provenance.
@@ -370,6 +430,38 @@ impl Document {
         self.validate()?;
         Ok(serde_json::to_vec(self)?)
     }
+
+    /// Validates the stricter FP0/FDX0 state contract, including evidence-bearing cells.
+    pub fn validate_evidence_grade(&self) -> Result<(), IrError> {
+        self.validate()?;
+        for page in &self.pages {
+            let evidence_ids: BTreeSet<_> = page
+                .regions
+                .iter()
+                .flat_map(|region| &region.evidence)
+                .map(|evidence| &evidence.id)
+                .collect();
+            validate_table_cells(page, &evidence_ids, true)?;
+        }
+        Ok(())
+    }
+}
+
+impl GeometryQuality {
+    fn validate(self, geometry: Option<PageRect>, page: &Page) -> Result<(), IrError> {
+        match (self, geometry) {
+            (Self::PageOnly, Some(value)) if value != page.bounds => Err(IrError::Invalid(
+                "page-only evidence geometry must equal the page bounds".into(),
+            )),
+            (Self::PageOnly, None) => Err(IrError::Invalid(
+                "page-only evidence must identify its containing page bounds".into(),
+            )),
+            (Self::Glyph | Self::Word | Self::Line | Self::Region, None) => Err(IrError::Invalid(
+                "precise geometry quality requires geometry".into(),
+            )),
+            _ => Ok(()),
+        }
+    }
 }
 
 fn validate_page(page: &Page) -> Result<(), IrError> {
@@ -416,6 +508,20 @@ fn validate_page(page: &Page) -> Result<(), IrError> {
                     "evidence geometry uses a different page index".into(),
                 ));
             }
+            evidence
+                .geometry_quality
+                .validate(evidence.geometry, page)?;
+            if let Some(geometry) = evidence.geometry
+                && !page
+                    .bounds
+                    .rect
+                    .contains(geometry.rect)
+                    .map_err(|error| IrError::Invalid(error.to_string()))?
+            {
+                return Err(IrError::Invalid(
+                    "evidence geometry lies outside page bounds".into(),
+                ));
+            }
             if let EvidenceContent::Image { artifact, .. } = &evidence.content
                 && !artifact_ids.contains(artifact)
             {
@@ -436,6 +542,7 @@ fn validate_page(page: &Page) -> Result<(), IrError> {
             ));
         }
     }
+    validate_table_cells(page, &evidence_ids, false)?;
     for edge in &page.reading_order {
         if edge.before == edge.after
             || !region_ids.contains(&edge.before)
@@ -445,6 +552,88 @@ fn validate_page(page: &Page) -> Result<(), IrError> {
         }
     }
     ensure_acyclic(&region_ids, &page.reading_order)
+}
+
+fn validate_table_cells(
+    page: &Page,
+    evidence_ids: &BTreeSet<&EvidenceId>,
+    require_source_spans: bool,
+) -> Result<(), IrError> {
+    for region in &page.regions {
+        for evidence in &region.evidence {
+            let EvidenceContent::Table {
+                rows,
+                columns,
+                cells,
+            } = &evidence.content
+            else {
+                continue;
+            };
+            if *rows == 0 || *columns == 0 {
+                return Err(IrError::Invalid("table dimensions must be nonzero".into()));
+            }
+            for cell in cells {
+                if cell.row_span == 0
+                    || cell.column_span == 0
+                    || cell
+                        .row
+                        .checked_add(cell.row_span)
+                        .is_none_or(|end| end > *rows)
+                    || cell
+                        .column
+                        .checked_add(cell.column_span)
+                        .is_none_or(|end| end > *columns)
+                {
+                    return Err(IrError::Invalid(
+                        "table cell span lies outside table dimensions".into(),
+                    ));
+                }
+                cell.geometry_quality.validate(cell.geometry, page)?;
+                if require_source_spans && cell.source_spans.is_empty() {
+                    return Err(IrError::Invalid(
+                        "table cell has no source-span evidence".into(),
+                    ));
+                }
+                if cell.source_spans.is_empty() {
+                    continue;
+                }
+                let mut reconstructed = String::new();
+                for span in &cell.source_spans {
+                    if !evidence_ids.contains(&span.evidence_id) || span.start > span.end {
+                        return Err(IrError::Invalid(
+                            "table cell source span references missing evidence or is reversed"
+                                .into(),
+                        ));
+                    }
+                    let source = page
+                        .regions
+                        .iter()
+                        .flat_map(|candidate| &candidate.evidence)
+                        .find(|candidate| candidate.id == span.evidence_id)
+                        .expect("checked evidence identity");
+                    let EvidenceContent::Text { text } = &source.content else {
+                        return Err(IrError::Invalid(
+                            "table cell source span must reference text evidence".into(),
+                        ));
+                    };
+                    let start = usize::try_from(span.start)
+                        .map_err(|_| IrError::Invalid("source span offset overflow".into()))?;
+                    let end = usize::try_from(span.end)
+                        .map_err(|_| IrError::Invalid("source span offset overflow".into()))?;
+                    let selected = text.get(start..end).ok_or_else(|| {
+                        IrError::Invalid("table cell source span is not a UTF-8 byte range".into())
+                    })?;
+                    reconstructed.push_str(selected);
+                }
+                if reconstructed != cell.text {
+                    return Err(IrError::Invalid(
+                        "table cell text differs from its source spans".into(),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn ensure_acyclic(

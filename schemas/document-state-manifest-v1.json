@@ -1,0 +1,350 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DocumentStateManifest",
+  "description": "Immutable manifest for one logical set of evidence.",
+  "type": "object",
+  "required": [
+    "evidence_delta_ids",
+    "ir_schema",
+    "reconciliation_policy_id",
+    "source_pdf_sha256",
+    "state_schema"
+  ],
+  "properties": {
+    "coverage": {
+      "description": "Retained summary, excluded from logical identity.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CoverageEntry"
+      }
+    },
+    "evidence_delta_ids": {
+      "description": "Canonical set of evidence-delta identities.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EvidenceDeltaId"
+      },
+      "uniqueItems": true
+    },
+    "ir_schema": {
+      "description": "Document IR schema interpreted by this state.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SchemaVersion"
+        }
+      ]
+    },
+    "materialized_ir_checkpoint": {
+      "description": "Optional physical checkpoint, excluded from logical identity.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/MaterializedIrCheckpoint"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "parent_state_ids": {
+      "description": "Construction/merge lineage, excluded from logical identity.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/DocumentStateId"
+      },
+      "uniqueItems": true
+    },
+    "reconciliation_policy_id": {
+      "description": "Deterministic reconciliation-policy identity.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        }
+      ]
+    },
+    "source_pdf_sha256": {
+      "description": "Exact source PDF identity.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        }
+      ]
+    },
+    "state_schema": {
+      "description": "Persistent state schema tag.",
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "ArtifactId": {
+      "type": "string"
+    },
+    "Capability": {
+      "description": "A capability an engine can provide.",
+      "oneOf": [
+        {
+          "description": "Open and inspect a document container.",
+          "type": "string",
+          "enum": [
+            "document.open"
+          ]
+        },
+        {
+          "description": "Render a document page.",
+          "type": "string",
+          "enum": [
+            "page.render"
+          ]
+        },
+        {
+          "description": "Extract native text.",
+          "type": "string",
+          "enum": [
+            "text.extract"
+          ]
+        },
+        {
+          "description": "Detect layout regions.",
+          "type": "string",
+          "enum": [
+            "layout.detect"
+          ]
+        },
+        {
+          "description": "Determine reading order.",
+          "type": "string",
+          "enum": [
+            "reading-order.detect"
+          ]
+        },
+        {
+          "description": "OCR a complete page.",
+          "type": "string",
+          "enum": [
+            "ocr.page"
+          ]
+        },
+        {
+          "description": "OCR one region.",
+          "type": "string",
+          "enum": [
+            "ocr.region"
+          ]
+        },
+        {
+          "description": "Recognize a table.",
+          "type": "string",
+          "enum": [
+            "table.recognize"
+          ]
+        },
+        {
+          "description": "Recognize a formula.",
+          "type": "string",
+          "enum": [
+            "formula.recognize"
+          ]
+        },
+        {
+          "description": "Score evidence quality.",
+          "type": "string",
+          "enum": [
+            "quality.score"
+          ]
+        }
+      ]
+    },
+    "CoverageEntry": {
+      "description": "One logical capability coverage observation.",
+      "type": "object",
+      "required": [
+        "capability",
+        "scope",
+        "status"
+      ],
+      "properties": {
+        "capability": {
+          "description": "Capability covered.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Capability"
+            }
+          ]
+        },
+        "scope": {
+          "description": "Scope of the observation.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RefinementScope"
+            }
+          ]
+        },
+        "status": {
+          "description": "Deterministic coverage status or qualifier.",
+          "type": "string"
+        }
+      }
+    },
+    "DocumentStateId": {
+      "type": "string"
+    },
+    "EvidenceDeltaId": {
+      "type": "string"
+    },
+    "MaterializedIrCheckpoint": {
+      "description": "Optional physical checkpoint reference. It is never part of logical state identity.",
+      "type": "object",
+      "required": [
+        "artifact_id",
+        "document_ir_logical_sha256",
+        "representation"
+      ],
+      "properties": {
+        "artifact_id": {
+          "description": "Physical artifact identity.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ArtifactId"
+            }
+          ]
+        },
+        "document_ir_logical_sha256": {
+          "description": "Digest of canonical DocumentIR JSON.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        },
+        "representation": {
+          "description": "Physical representation media type or codec label.",
+          "type": "string"
+        }
+      }
+    },
+    "PageId": {
+      "type": "string"
+    },
+    "PageRegionRef": {
+      "description": "A page-qualified region address. Region IDs are only page-local.",
+      "type": "object",
+      "required": [
+        "page_id",
+        "region_id"
+      ],
+      "properties": {
+        "page_id": {
+          "description": "Containing page.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PageId"
+            }
+          ]
+        },
+        "region_id": {
+          "description": "Page-local region.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RegionId"
+            }
+          ]
+        }
+      }
+    },
+    "RefinementScope": {
+      "description": "Scope actually processed by a refinement.",
+      "oneOf": [
+        {
+          "description": "Whole document.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "document"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Explicit pages.",
+          "type": "object",
+          "required": [
+            "kind",
+            "page_ids"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "pages"
+              ]
+            },
+            "page_ids": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/PageId"
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        {
+          "description": "Explicit page-qualified regions.",
+          "type": "object",
+          "required": [
+            "kind",
+            "regions"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "regions"
+              ]
+            },
+            "regions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/PageRegionRef"
+              },
+              "uniqueItems": true
+            }
+          }
+        }
+      ]
+    },
+    "RegionId": {
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "description": "A semantic schema version. Major changes require migration; minor additions are compatible.",
+      "type": "object",
+      "required": [
+        "major",
+        "minor"
+      ],
+      "properties": {
+        "major": {
+          "description": "Compatibility-breaking version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "minor": {
+          "description": "Backward-compatible additive version.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    }
+  }
+}
