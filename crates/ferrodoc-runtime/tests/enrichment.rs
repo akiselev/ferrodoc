@@ -1085,12 +1085,8 @@ fn durable_physical_realizations_are_nonsemantic_and_fail_closed() {
     .unwrap();
     let mut relabeled = fixture_runtime(Arc::new(Mutex::new(Vec::new())))
         .with_durable_store(DurableStateStore::open(durable_root.path()).unwrap());
-    let relabeled_plan = match relabeled.plan(&request, &document, &manifest).unwrap() {
-        EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
-        outcome => panic!("unexpected plan: {outcome:?}"),
-    };
     assert!(matches!(
-        relabeled.execute(&request, &relabeled_plan, bytes, &document, &manifest),
+        relabeled.plan(&request, &document, &manifest),
         Err(RuntimeError::Durable(DurableError::Invalid { .. }))
     ));
 
