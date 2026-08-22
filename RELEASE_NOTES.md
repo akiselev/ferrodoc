@@ -1,6 +1,11 @@
-# Ferrodoc v0.2.0
+# Ferrodoc v0.2.0 (unreleased)
 
-Ferrodoc v0.2 is the first qualified offline vertical slice. It preserves native PDF and OCR evidence independently, plans resource placement before execution, and emits deterministic Markdown, HTML, or versioned evidence JSON.
+These notes describe the pending v0.2 release. The workspace version remains
+`0.1.0` until the release operation bumps it; see `docs/release.md`.
+
+Ferrodoc v0.2 is the first qualified offline vertical slice. It preserves native
+PDF and OCR evidence independently, plans resource placement before execution,
+and emits deterministic Markdown, HTML, or versioned evidence JSON.
 
 Qualified engines:
 
