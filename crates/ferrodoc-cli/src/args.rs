@@ -2,6 +2,7 @@ use std::{ffi::OsString, path::PathBuf};
 
 use ferrodoc_core::{Bytes, MicroUsd, Millis, Profile};
 use ferrodoc_render::OutputFormat;
+use ferrodoc_runtime::DocumentProfile;
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -88,6 +89,7 @@ pub struct PipelineArgs {
     pub ocr_dpi: Option<u32>,
     pub ocr_engine: Option<String>,
     pub profile: Option<Profile>,
+    pub document_profile: Option<DocumentProfile>,
     pub max_ram: Option<Bytes>,
     pub max_vram: Option<Bytes>,
     pub max_remote_cost: Option<MicroUsd>,
@@ -280,6 +282,7 @@ fn parse_pipeline(
     let mut ocr_engine = None;
     let mut output = None;
     let mut profile = None;
+    let mut document_profile = None;
     let mut max_ram = None;
     let mut max_vram = None;
     let mut max_remote_cost = None;
@@ -323,6 +326,17 @@ fn parse_pipeline(
                         .parse()
                         .map_err(|error: ferrodoc_core::CoreError| ArgsError(error.to_string()))?,
                 );
+            }
+            "--document-profile" => {
+                document_profile = Some(match next_string(values, &mut index, value)?.as_str() {
+                    "adaptive" => DocumentProfile::Adaptive,
+                    "baseline" => DocumentProfile::Baseline,
+                    other => {
+                        return Err(ArgsError(format!(
+                            "unsupported document profile {other:?}; expected adaptive or baseline"
+                        )));
+                    }
+                });
             }
             "--max-ram" => {
                 let selected = next_string(values, &mut index, value)?;
@@ -373,6 +387,7 @@ fn parse_pipeline(
             ocr_dpi,
             ocr_engine,
             profile,
+            document_profile,
             max_ram,
             max_vram,
             max_remote_cost,
@@ -426,9 +441,18 @@ mod tests {
     #[test]
     fn parses_convert_options_in_any_position() {
         let command = parse_from(
-            ["convert", "--format", "html", "input.pdf", "-o", "out.html"]
-                .into_iter()
-                .map(OsString::from),
+            [
+                "convert",
+                "--format",
+                "html",
+                "--document-profile",
+                "baseline",
+                "input.pdf",
+                "-o",
+                "out.html",
+            ]
+            .into_iter()
+            .map(OsString::from),
         )
         .unwrap();
         let Command::Convert(arguments) = command else {
@@ -437,6 +461,10 @@ mod tests {
         assert_eq!(arguments.format, OutputFormat::Html);
         assert_eq!(arguments.pipeline.input, PathBuf::from("input.pdf"));
         assert_eq!(arguments.output, Some(PathBuf::from("out.html")));
+        assert_eq!(
+            arguments.pipeline.document_profile,
+            Some(DocumentProfile::Baseline)
+        );
     }
 
     #[test]

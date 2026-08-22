@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PdfSurvey",
+  "description": "Cheap deterministic survey completed before any page rasterization or OCR.",
+  "type": "object",
+  "required": [
+    "bytes",
+    "container_metadata",
+    "digest",
+    "family_features",
+    "object_count",
+    "pages",
+    "repeated_margin_text_hints",
+    "script_hints"
+  ],
+  "properties": {
+    "bytes": {
+      "description": "Container byte count.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "container_metadata": {
+      "description": "Selected deterministic PDF Info/Catalog metadata. Missing keys remain absent.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "digest": {
+      "description": "Exact source identity.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        }
+      ]
+    },
+    "family_features": {
+      "description": "Coarse deterministic family features suitable for grouping, not a family decision.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "object_count": {
+      "description": "Loaded indirect-object count.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "pages": {
+      "description": "Ordered page observations.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PdfPageSurvey"
+      }
+    },
+    "repeated_margin_text_hints": {
+      "description": "Exact repeated edge-line candidates for later header/footer classification.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/RepeatedMarginTextHint"
+      }
+    },
+    "script_hints": {
+      "description": "Document-level script families observed in native text.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "definitions": {
+    "PageContentHint": {
+      "description": "Cheap, deterministic classification of a PDF page before OCR.",
+      "oneOf": [
+        {
+          "description": "No native text, image invocation, or painted vector path was observed.",
+          "type": "string",
+          "enum": [
+            "blank"
+          ]
+        },
+        {
+          "description": "Native text was observed without image invocations.",
+          "type": "string",
+          "enum": [
+            "born_digital"
+          ]
+        },
+        {
+          "description": "Image invocations were observed without native text.",
+          "type": "string",
+          "enum": [
+            "scanned"
+          ]
+        },
+        {
+          "description": "Native text and image invocations were both observed.",
+          "type": "string",
+          "enum": [
+            "hybrid"
+          ]
+        },
+        {
+          "description": "Content operators were observed but native text and image evidence were inconclusive.",
+          "type": "string",
+          "enum": [
+            "other_content"
+          ]
+        }
+      ]
+    },
+    "PdfPageSurvey": {
+      "description": "Per-page evidence gathered without rasterization or OCR.",
+      "type": "object",
+      "required": [
+        "candidate_kinds",
+        "content_hint",
+        "height_points",
+        "high_value_candidate",
+        "native_characters",
+        "native_characters_per_square_point",
+        "page_index",
+        "painted_vector_paths",
+        "painted_vector_paths_per_square_point",
+        "script_hints",
+        "text_show_operations",
+        "width_points",
+        "xobject_invocations",
+        "xobject_invocations_per_square_point"
+      ],
+      "properties": {
+        "candidate_kinds": {
+          "description": "Conservative page-level candidate kinds for later region refinement.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "content_hint": {
+          "description": "Coarse pre-OCR content hint.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PageContentHint"
+            }
+          ]
+        },
+        "height_points": {
+          "description": "Effective crop-box height in PDF points.",
+          "type": "number",
+          "format": "double"
+        },
+        "high_value_candidate": {
+          "description": "Whether refinement is likely valuable because native text is absent or mixed with imagery.",
+          "type": "boolean"
+        },
+        "native_characters": {
+          "description": "Number of non-whitespace native Unicode scalar values.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "native_characters_per_square_point": {
+          "description": "Native character count divided by page area in square points.",
+          "type": "number",
+          "format": "double"
+        },
+        "native_text_sha256": {
+          "description": "Exact normalized native-text fingerprint, absent when no text was recovered.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "native_text_simhash": {
+          "description": "Deterministic 64-bit token SimHash for near-duplicate candidate generation.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "page_index": {
+          "description": "Zero-based page index.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "painted_vector_paths": {
+          "description": "Number of painted vector-path operators.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "painted_vector_paths_per_square_point": {
+          "description": "Painted vector-path count divided by page area in square points.",
+          "type": "number",
+          "format": "double"
+        },
+        "script_hints": {
+          "description": "Unicode script families observed in native text.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "text_show_operations": {
+          "description": "Number of PDF text-show operators, including text that could not be decoded.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "width_points": {
+          "description": "Effective crop-box width in PDF points.",
+          "type": "number",
+          "format": "double"
+        },
+        "xobject_invocations": {
+          "description": "Number of PDF image/form invocation operators. Forms are not misreported as images.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "xobject_invocations_per_square_point": {
+          "description": "XObject invocation count divided by page area in square points.",
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "RepeatedMarginTextHint": {
+      "description": "Exact repeated first/last native-line hint across pages; this is not a header/footer decision.",
+      "type": "object",
+      "required": [
+        "page_indexes",
+        "position",
+        "text_sha256"
+      ],
+      "properties": {
+        "page_indexes": {
+          "description": "Pages on which the exact line occurs in that position.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
+        "position": {
+          "description": "`first_native_line` or `last_native_line`.",
+          "type": "string"
+        },
+        "text_sha256": {
+          "description": "Exact normalized line fingerprint; source text is not duplicated in the survey.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Sha256Digest"
+            }
+          ]
+        }
+      }
+    },
+    "Sha256Digest": {
+      "type": "string"
+    }
+  }
+}

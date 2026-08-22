@@ -1,7 +1,7 @@
 //! Embedded runtime and deterministic Phase 2 conversion pipeline.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     time::{Duration, Instant},
 };
 
@@ -20,11 +20,13 @@ use ferrodoc_engine_ocrs::{OcrsEngine, RGBA8_MEDIA_TYPE};
 #[cfg(feature = "tesseract")]
 use ferrodoc_engine_tesseract::TesseractEngine;
 use ferrodoc_ir::{
-    Document, DocumentMetadata, Evidence, EvidenceContent, Page, ReadingOrderEdge, Region,
+    CoverageEntry, DOCUMENT_STATE_SCHEMA, DeltaDiagnostic, DeltaProducer, Document,
+    DocumentMetadata, DocumentStateManifest, EVIDENCE_DELTA_SCHEMA, Evidence, EvidenceContent,
+    EvidenceDelta, MaterializedIrCheckpoint, Page, ReadingOrderEdge, RefinementScope, Region,
     RegionKind, RenderArtifact, SelectedView, SelectionReason, SourceLayer, SourceLayerKind,
 };
 use ferrodoc_layout_rulebased::RuleBasedLayoutEngine;
-use ferrodoc_pdf::{PdfDocument, PdfError, PdfLimits};
+use ferrodoc_pdf::{PageContentHint, PdfDocument, PdfError, PdfLimits, PdfSurvey};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -163,6 +165,19 @@ pub struct ConversionOptions {
     pub deadline: Option<Millis>,
     /// Explicit guarded-execution opt-in for unknown hard estimates.
     pub allow_unknown_hard_estimates: bool,
+    /// Document-level execution profile. Baseline OCRs every page not proven blank.
+    pub document_profile: DocumentProfile,
+}
+
+/// Document-level orchestration policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+#[schemars(rename_all = "snake_case")]
+pub enum DocumentProfile {
+    /// Use native-text quality to avoid unnecessary OCR.
+    Adaptive,
+    /// Produce inexpensive full-document OCR evidence for every nonblank page.
+    Baseline,
 }
 
 impl Default for ConversionOptions {
@@ -177,6 +192,7 @@ impl Default for ConversionOptions {
             max_remote_cost: None,
             deadline: None,
             allow_unknown_hard_estimates: false,
+            document_profile: DocumentProfile::Adaptive,
         }
     }
 }
@@ -264,6 +280,46 @@ pub struct ConversionResult {
     pub resources: ResourceExecutionTrace,
 }
 
+/// Content-identifiable FP2 baseline state and its physical canonical checkpoint.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct BaselineResult {
+    /// Cheap pre-OCR survey.
+    pub survey: PdfSurvey,
+    /// Evidence-bearing conversion and observational runtime trace.
+    pub conversion: ConversionResult,
+    /// Immutable document-scoped baseline evidence.
+    pub delta: EvidenceDelta,
+    /// Logical state identity plus an explicitly non-identifying checkpoint reference.
+    pub manifest: DocumentStateManifest,
+    /// Canonical DocumentIR bytes identified by the checkpoint.
+    pub checkpoint_json: Vec<u8>,
+    /// Deterministic size and useful-coverage accounting. Timing and memory stay observational.
+    pub summary: BaselineSummary,
+}
+
+/// Deterministic FP2 baseline accounting suitable for attaching to benchmark observations.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct BaselineSummary {
+    /// Total pages.
+    pub pages: u32,
+    /// Pages not proven blank by survey.
+    pub nonblank_pages: u32,
+    /// Pages retaining OCR layers.
+    pub ocr_pages: u32,
+    /// Pages retaining native text evidence.
+    pub native_text_pages: u32,
+    /// Pages with at least one selected text hypothesis.
+    pub searchable_pages: u32,
+    /// Pages with at least one coarse semantic region.
+    pub layout_pages: u32,
+    /// Selected text evidence records with non-unknown geometry divided by selected text records.
+    pub useful_provenance_geometry_coverage: f64,
+    /// Exact canonical baseline-delta artifact bytes.
+    pub evidence_bytes: Bytes,
+    /// Evidence bytes divided by page count.
+    pub evidence_bytes_per_page: f64,
+}
+
 /// Cache outcome for one expensive stage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -346,6 +402,36 @@ impl Converter {
         })
     }
 
+    /// Creates a converter around an explicitly supplied OCR engine boundary.
+    ///
+    /// This supports qualified embedded engines without coupling baseline orchestration to a
+    /// particular implementation. The engine descriptor must advertise full-page OCR.
+    pub fn with_ocr_engine(
+        options: ConversionOptions,
+        engine: impl Engine + 'static,
+        model_id: ModelId,
+        model_digest: Option<Sha256Digest>,
+    ) -> Result<Self, RuntimeError> {
+        engine.descriptor().validate()?;
+        if !engine
+            .descriptor()
+            .capabilities
+            .contains(&Capability::OcrPage)
+        {
+            return Err(RuntimeError::InvalidEnrichment(
+                "baseline OCR engine does not advertise ocr.page".into(),
+            ));
+        }
+        Ok(Self {
+            layout: RuleBasedLayoutEngine::new(),
+            ocr: Box::new(engine),
+            ocr_model_id: model_id,
+            ocr_model_digest: model_digest,
+            options,
+            cache: None,
+        })
+    }
+
     /// Creates a converter using the optional dynamically discovered Tesseract engine.
     #[cfg(feature = "tesseract")]
     pub fn with_tesseract(options: ConversionOptions, engine: TesseractEngine) -> Self {
@@ -403,22 +489,50 @@ impl Converter {
     /// Produces an actual per-page plan without executing layout or OCR.
     pub fn plan(&mut self, bytes: &[u8]) -> Result<ConversionPlan, RuntimeError> {
         let pdf = PdfDocument::from_bytes(bytes.to_vec(), self.options.pdf_limits.clone())?;
+        let survey = pdf.survey()?;
         let ocr_ready = self.ocr.health(HealthRequest::Shallow)?.status
             == ferrodoc_engine_api::HealthStatus::Healthy;
         Ok(plan_for(
             &pdf,
+            &survey,
             &self.options,
             ocr_ready,
             &self.ocr.descriptor().id,
         ))
     }
 
+    /// Performs the cheap deterministic pre-OCR survey only.
+    pub fn survey(&self, bytes: &[u8]) -> Result<PdfSurvey, RuntimeError> {
+        PdfDocument::from_bytes(bytes.to_vec(), self.options.pdf_limits.clone())?
+            .survey()
+            .map_err(Into::into)
+    }
+
+    /// Produces the FP2 full-document baseline, immutable delta, state, and checkpoint.
+    pub fn baseline(&mut self, bytes: Vec<u8>) -> Result<BaselineResult, RuntimeError> {
+        let survey = self.survey(&bytes)?;
+        let prior_profile = self.options.document_profile;
+        self.options.document_profile = DocumentProfile::Baseline;
+        let baseline_options = self.options.clone();
+        let conversion_result = self.convert(bytes);
+        self.options.document_profile = prior_profile;
+        let conversion = conversion_result?;
+        baseline_state(survey, conversion, &baseline_options)
+    }
+
     /// Converts a PDF to validated evidence IR using embedded engines.
     pub fn convert(&mut self, bytes: Vec<u8>) -> Result<ConversionResult, RuntimeError> {
         let pdf = PdfDocument::from_bytes(bytes, self.options.pdf_limits.clone())?;
+        let survey = pdf.survey()?;
         let ocr_ready = self.ocr.health(HealthRequest::Shallow)?.status
             == ferrodoc_engine_api::HealthStatus::Healthy;
-        let plan = plan_for(&pdf, &self.options, ocr_ready, &self.ocr.descriptor().id);
+        let plan = plan_for(
+            &pdf,
+            &survey,
+            &self.options,
+            ocr_ready,
+            &self.ocr.descriptor().id,
+        );
         let mut resource_runtime = ResourceRuntime::new(
             self.options.clone(),
             hardware::inventory(),
@@ -452,7 +566,13 @@ impl Converter {
                 .collect::<Vec<_>>()
                 .join("\n");
             let native_characters = quality_characters(&native_text);
-            let needs_ocr = native_characters < self.options.native_character_threshold as usize;
+            let page_survey = &survey.pages[page_index as usize];
+            let needs_ocr = match self.options.document_profile {
+                DocumentProfile::Adaptive => {
+                    native_characters < self.options.native_character_threshold as usize
+                }
+                DocumentProfile::Baseline => page_survey.content_hint != PageContentHint::Blank,
+            };
             trace.push(TraceEvent {
                 page_index: Some(page_index),
                 code: "native.quality".into(),
@@ -463,7 +583,7 @@ impl Converter {
                 ),
             });
 
-            let layout_response = if native_text.is_empty() {
+            let mut layout_response = if native_text.is_empty() {
                 None
             } else {
                 Some(execute_layout(
@@ -533,18 +653,54 @@ impl Converter {
                     ocr_engine_id,
                     &mut resource_runtime,
                 )?);
+                if layout_response.is_none() {
+                    let ocr_text = ocr_response
+                        .as_ref()
+                        .into_iter()
+                        .flat_map(|response| &response.evidence)
+                        .filter_map(|evidence| match &evidence.content {
+                            EvidenceContent::Text { text } => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if !ocr_text.is_empty() {
+                        layout_response = Some(execute_layout(
+                            &mut self.layout,
+                            &ocr_text,
+                            bounds,
+                            digest,
+                            page_index,
+                            &mut resource_runtime,
+                        )?);
+                    }
+                }
                 trace.push(TraceEvent {
                     page_index: Some(page_index),
                     code: "ocr.executed".into(),
                     execution: Some(ExecutionMode::Embedded),
-                    detail: "native evidence was absent or below threshold".into(),
+                    detail: match self.options.document_profile {
+                        DocumentProfile::Adaptive => {
+                            "native evidence was absent or below threshold".into()
+                        }
+                        DocumentProfile::Baseline => {
+                            "baseline profile OCRs every page not proven blank".into()
+                        }
+                    },
                 });
             } else {
                 trace.push(TraceEvent {
                     page_index: Some(page_index),
                     code: "ocr.rejected".into(),
                     execution: Some(ExecutionMode::Embedded),
-                    detail: "native evidence met the quality threshold".into(),
+                    detail: match self.options.document_profile {
+                        DocumentProfile::Adaptive => {
+                            "native evidence met the quality threshold".into()
+                        }
+                        DocumentProfile::Baseline => {
+                            "survey deterministically proved the page blank".into()
+                        }
+                    },
                 });
             }
 
@@ -609,6 +765,243 @@ impl Converter {
             },
         })
     }
+}
+
+fn baseline_state(
+    survey: PdfSurvey,
+    conversion: ConversionResult,
+    options: &ConversionOptions,
+) -> Result<BaselineResult, RuntimeError> {
+    let document = &conversion.document;
+    let page_ids: BTreeSet<_> = document.pages.iter().map(|page| page.id.clone()).collect();
+    let ocr_pages = document
+        .pages
+        .iter()
+        .filter(|page| {
+            page.layers
+                .iter()
+                .any(|layer| layer.kind == SourceLayerKind::Ocr)
+        })
+        .count();
+    let native_pages = document
+        .pages
+        .iter()
+        .filter(|page| {
+            page.regions
+                .iter()
+                .flat_map(|region| &region.evidence)
+                .any(|evidence| evidence.provenance.stage == Stage::NativeExtract)
+        })
+        .count();
+    let disagreements = document
+        .pages
+        .iter()
+        .filter(|page| native_ocr_disagree(page))
+        .map(|page| DeltaDiagnostic {
+            code: "baseline.native_ocr_disagreement".into(),
+            message: format!(
+                "page {} retains distinct native and OCR text hypotheses",
+                page.index
+            ),
+        })
+        .collect();
+    let producer = DeltaProducer {
+        name: "ferrodoc.baseline".into(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        build: Sha256Digest::of_bytes(
+            concat!(
+                env!("CARGO_PKG_NAME"),
+                ":",
+                env!("CARGO_PKG_VERSION"),
+                ":fp2-baseline-contract/1"
+            )
+            .as_bytes(),
+        ),
+        model_digest: document
+            .pages
+            .iter()
+            .flat_map(|page| &page.regions)
+            .flat_map(|region| &region.evidence)
+            .find_map(|evidence| evidence.provenance.model_digest),
+        configuration_digest: Sha256Digest::of_bytes(
+            serde_json::to_vec(&("fp2-baseline", options, &survey))
+                .map_err(ferrodoc_ir::IrError::from)?
+                .as_slice(),
+        ),
+    };
+    let coverage_delta = vec![
+        CoverageEntry {
+            capability: Capability::DocumentOpen,
+            scope: RefinementScope::Document,
+            status: format!("surveyed {} pages", document.pages.len()),
+        },
+        CoverageEntry {
+            capability: Capability::TextExtract,
+            scope: RefinementScope::Pages {
+                page_ids: page_ids.clone(),
+            },
+            status: format!("native evidence retained on {native_pages} pages"),
+        },
+        CoverageEntry {
+            capability: Capability::OcrPage,
+            scope: RefinementScope::Pages {
+                page_ids: page_ids.clone(),
+            },
+            status: format!(
+                "OCR evidence attempted on {ocr_pages} nonblank pages; survey-proven blank pages skipped"
+            ),
+        },
+        CoverageEntry {
+            capability: Capability::LayoutDetect,
+            scope: RefinementScope::Pages {
+                page_ids: page_ids.clone(),
+            },
+            status: "coarse regions retained where native text or OCR produced evidence".into(),
+        },
+        CoverageEntry {
+            capability: Capability::ReadingOrderDetect,
+            scope: RefinementScope::Pages { page_ids },
+            status: "deterministic source-order edges retained between coarse regions".into(),
+        },
+    ];
+    let delta = EvidenceDelta {
+        delta_schema: EVIDENCE_DELTA_SCHEMA.into(),
+        source_pdf_sha256: document.input_digest,
+        ir_schema: document.schema_version,
+        stage: Stage::Reconcile,
+        producer,
+        scope: RefinementScope::Document,
+        input_state_id: None,
+        required_evidence_ids: BTreeSet::new(),
+        new_pages: document.pages.clone(),
+        page_additions: Vec::new(),
+        selection_hints: Vec::new(),
+        diagnostics: disagreements,
+        coverage_delta: coverage_delta.clone(),
+    };
+    let delta_id = delta.id()?;
+    let mut manifest = DocumentStateManifest {
+        state_schema: DOCUMENT_STATE_SCHEMA.into(),
+        source_pdf_sha256: document.input_digest,
+        ir_schema: document.schema_version,
+        evidence_delta_ids: BTreeSet::from([delta_id]),
+        reconciliation_policy_id: Sha256Digest::of_bytes(b"ferrodoc-baseline-reconcile/1"),
+        coverage: coverage_delta,
+        materialized_ir_checkpoint: None,
+        parent_state_ids: BTreeSet::new(),
+    };
+    manifest.id()?;
+    let initial = Document {
+        schema_version: document.schema_version,
+        id: document.id.clone(),
+        input_digest: document.input_digest,
+        metadata: document.metadata.clone(),
+        pages: Vec::new(),
+    };
+    let checkpoint_json =
+        ferrodoc_ir::materialize_state(&initial, std::slice::from_ref(&delta), &manifest)?
+            .to_canonical_json()?;
+    let checkpoint_digest = Sha256Digest::of_bytes(&checkpoint_json);
+    manifest.materialized_ir_checkpoint = Some(MaterializedIrCheckpoint {
+        document_ir_logical_sha256: checkpoint_digest,
+        artifact_id: ArtifactId::derive(&[
+            b"ferrodoc-baseline-checkpoint/1",
+            checkpoint_digest.as_bytes(),
+        ]),
+        representation: "application/vnd.ferrodoc.document-ir+json;version=1".into(),
+    });
+    let evidence_bytes = delta.to_canonical_json()?.len() as u64;
+    let selected_text = document
+        .pages
+        .iter()
+        .flat_map(|page| &page.regions)
+        .flat_map(|region| {
+            let selected = region
+                .selected
+                .as_ref()
+                .map(|view| view.evidence_ids.iter().collect::<BTreeSet<_>>())
+                .unwrap_or_default();
+            region.evidence.iter().filter(move |evidence| {
+                selected.contains(&evidence.id)
+                    && matches!(evidence.content, EvidenceContent::Text { .. })
+            })
+        })
+        .collect::<Vec<_>>();
+    let useful_geometry = selected_text
+        .iter()
+        .filter(|evidence| {
+            evidence.geometry.is_some()
+                && evidence.geometry_quality != ferrodoc_ir::GeometryQuality::Unknown
+        })
+        .count();
+    let pages = document.pages.len() as u32;
+    let summary = BaselineSummary {
+        pages,
+        nonblank_pages: survey
+            .pages
+            .iter()
+            .filter(|page| page.content_hint != PageContentHint::Blank)
+            .count() as u32,
+        ocr_pages: ocr_pages as u32,
+        native_text_pages: native_pages as u32,
+        searchable_pages: document
+            .pages
+            .iter()
+            .filter(|page| {
+                page.regions.iter().any(|region| {
+                    region.selected.as_ref().is_some_and(|selected| {
+                        region.evidence.iter().any(|evidence| {
+                            selected.evidence_ids.contains(&evidence.id)
+                                && matches!(&evidence.content, EvidenceContent::Text { text } if !text.trim().is_empty())
+                        })
+                    })
+                })
+            })
+            .count() as u32,
+        layout_pages: document
+            .pages
+            .iter()
+            .filter(|page| !page.regions.is_empty())
+            .count() as u32,
+        useful_provenance_geometry_coverage: if selected_text.is_empty() {
+            0.0
+        } else {
+            useful_geometry as f64 / selected_text.len() as f64
+        },
+        evidence_bytes: Bytes::new(evidence_bytes),
+        evidence_bytes_per_page: if pages == 0 {
+            0.0
+        } else {
+            evidence_bytes as f64 / f64::from(pages)
+        },
+    };
+    Ok(BaselineResult {
+        survey,
+        conversion,
+        delta,
+        manifest,
+        checkpoint_json,
+        summary,
+    })
+}
+
+fn native_ocr_disagree(page: &Page) -> bool {
+    let texts = |stage| {
+        page.regions
+            .iter()
+            .flat_map(|region| &region.evidence)
+            .filter(|evidence| evidence.provenance.stage == stage)
+            .filter_map(|evidence| match &evidence.content {
+                EvidenceContent::Text { text } => Some(text.trim()),
+                _ => None,
+            })
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let native = texts(Stage::NativeExtract);
+    let ocr = texts(Stage::Ocr);
+    !native.is_empty() && !ocr.is_empty() && native != ocr
 }
 
 fn plan_engine(
@@ -887,6 +1280,7 @@ fn execute_controlled(
 
 fn plan_for(
     pdf: &PdfDocument,
+    survey: &PdfSurvey,
     options: &ConversionOptions,
     ocr_ready: bool,
     ocr_engine_id: &str,
@@ -926,7 +1320,13 @@ fn plan_for(
                 "native text will be segmented deterministically".into()
             },
         });
-        let needs_ocr = native_characters < options.native_character_threshold as usize;
+        let page_survey = &survey.pages[page.index as usize];
+        let needs_ocr = match options.document_profile {
+            DocumentProfile::Adaptive => {
+                native_characters < options.native_character_threshold as usize
+            }
+            DocumentProfile::Baseline => page_survey.content_hint != PageContentHint::Blank,
+        };
         stages.push(PlannedStage {
             page_index: Some(page.index),
             stage: ocr_engine_id.into(),
@@ -940,18 +1340,23 @@ fn plan_for(
                 PlanDecision::Rejected
             },
             execution: Some(ExecutionMode::Embedded),
-            explanation: if needs_ocr {
-                format!(
-                    "native evidence is below the {} character threshold{}",
-                    options.native_character_threshold,
-                    if ocr_ready {
-                        ""
-                    } else {
-                        "; configured OCR engine is not ready"
-                    }
-                )
-            } else {
-                "native evidence meets the configured threshold".into()
+            explanation: match (options.document_profile, needs_ocr, ocr_ready) {
+                (DocumentProfile::Baseline, true, true) =>
+                    "baseline profile OCRs every page not proven blank".into(),
+                (DocumentProfile::Baseline, true, false) =>
+                    "baseline profile requires OCR, but the configured engine is not ready".into(),
+                (DocumentProfile::Baseline, false, _) =>
+                    "survey deterministically proved the page blank".into(),
+                (DocumentProfile::Adaptive, true, true) => format!(
+                    "native evidence is below the {} character threshold",
+                    options.native_character_threshold
+                ),
+                (DocumentProfile::Adaptive, true, false) => format!(
+                    "native evidence is below the {} character threshold; configured OCR engine is not ready",
+                    options.native_character_threshold
+                ),
+                (DocumentProfile::Adaptive, false, _) =>
+                    "native evidence meets the configured threshold".into(),
             },
         });
     }
@@ -1072,7 +1477,7 @@ fn reconcile_page(
                 native_layer_id,
                 native_provenance,
                 &text,
-                geometry,
+                bounds,
                 index as u64,
             );
             let kind = layout_item
@@ -1125,12 +1530,9 @@ fn reconcile_page(
         return (regions, reading_order);
     }
 
-    let mut evidence = layout.map_or_else(Vec::new, |response| response.evidence);
+    let layout_evidence = layout.map_or_else(Vec::new, |response| response.evidence);
     let native = (!native_text.is_empty())
         .then(|| native_evidence(native_layer_id, native_provenance, native_text, bounds, 0));
-    if let Some(native) = &native {
-        evidence.push(native.clone());
-    }
     let ocr_evidence = ocr.map_or_else(Vec::new, |response| response.evidence);
     let ocr_covers_native = !native_text.is_empty()
         && ocr_evidence.iter().any(|item| {
@@ -1139,33 +1541,37 @@ fn reconcile_page(
                 EvidenceContent::Text { text } if text.contains(native_text)
             )
         });
-    let ocr_ids: Vec<_> = ocr_evidence.iter().map(|item| item.id.clone()).collect();
-    evidence.extend(ocr_evidence);
-    let mut selected_ids = Vec::new();
-    if let Some(native) = &native
-        && !ocr_covers_native
-    {
-        selected_ids.push(native.id.clone());
-    }
-    selected_ids.extend(ocr_ids);
-    let selected = (!selected_ids.is_empty()).then(|| SelectedView {
-        reason: if native.is_some() {
-            SelectionReason::Reconciled
-        } else {
-            SelectionReason::NativeAbsent
-        },
-        explanation: if ocr_covers_native {
-            "OCR covered the low-quality native text; native evidence remains available separately"
-                .into()
-        } else if native.is_some() {
-            "native and OCR evidence were retained and selected in source order".into()
-        } else {
-            "OCR selected because native evidence was absent".into()
-        },
-        evidence_ids: selected_ids,
-    });
-    (
-        vec![Region {
+    let mut regions: Vec<_> = layout_evidence
+        .into_iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let kind = item
+                .engine_metadata
+                .get("region_kind")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|kind| kind.parse().ok())
+                .unwrap_or(RegionKind::Paragraph);
+            let geometry = item.geometry.unwrap_or(bounds);
+            Region {
+                id: RegionId::derive(&[
+                    native_provenance.input_digest.as_bytes(),
+                    &page_index.to_be_bytes(),
+                    b"baseline-layout",
+                    &(index as u64).to_be_bytes(),
+                ]),
+                kind,
+                geometry,
+                selected: Some(SelectedView {
+                    evidence_ids: vec![item.id.clone()],
+                    reason: SelectionReason::Reconciled,
+                    explanation: "coarse layout text retained in deterministic source order".into(),
+                }),
+                evidence: vec![item],
+            }
+        })
+        .collect();
+    if regions.is_empty() {
+        regions.push(Region {
             id: RegionId::derive(&[
                 native_provenance.input_digest.as_bytes(),
                 &page_index.to_be_bytes(),
@@ -1173,11 +1579,45 @@ fn reconcile_page(
             ]),
             kind: RegionKind::Paragraph,
             geometry: bounds,
-            evidence,
-            selected,
-        }],
-        Vec::new(),
-    )
+            evidence: Vec::new(),
+            selected: None,
+        });
+    }
+    let first = &mut regions[0];
+    let mut selected_ids = Vec::new();
+    if let Some(native) = native {
+        if !ocr_covers_native {
+            selected_ids.push(native.id.clone());
+        }
+        first.evidence.push(native);
+    }
+    selected_ids.extend(ocr_evidence.iter().map(|item| item.id.clone()));
+    first.evidence.extend(ocr_evidence);
+    if !selected_ids.is_empty() {
+        first.selected = Some(SelectedView {
+            reason: if native_text.is_empty() {
+                SelectionReason::NativeAbsent
+            } else {
+                SelectionReason::Reconciled
+            },
+            explanation: if ocr_covers_native {
+                "OCR covered the native text; native evidence remains available separately".into()
+            } else if native_text.is_empty() {
+                "OCR selected because native evidence was absent".into()
+            } else {
+                "native and OCR evidence were retained and selected in source order".into()
+            },
+            evidence_ids: selected_ids,
+        });
+    }
+    let reading_order = regions
+        .windows(2)
+        .map(|pair| ReadingOrderEdge {
+            before: pair[0].id.clone(),
+            after: pair[1].id.clone(),
+        })
+        .collect();
+    (regions, reading_order)
 }
 
 fn native_evidence(
@@ -1197,7 +1637,7 @@ fn native_evidence(
         layer_id: layer_id.clone(),
         content: EvidenceContent::Text { text: text.into() },
         geometry: Some(geometry),
-        geometry_quality: ferrodoc_ir::GeometryQuality::Region,
+        geometry_quality: ferrodoc_ir::GeometryQuality::PageOnly,
         confidence: None,
         provenance: provenance.clone(),
         engine_metadata: BTreeMap::new(),
@@ -1344,17 +1784,131 @@ impl TraceSink for NoTrace {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use std::{
+        collections::BTreeSet,
+        sync::{Arc, Mutex},
+    };
 
-    use ferrodoc_core::{BackendId, DeviceKind};
+    use ferrodoc_core::{BackendId, DeviceKind, Estimate, EstimateConfidence, EstimateSource};
     use ferrodoc_engine_api::{
         EngineCandidate, EngineCompatibility, HardwareInventory, HealthStatus, NetworkUse,
     };
+    use ferrodoc_ir::{GeometryQuality, materialize_state};
 
     use super::*;
 
     struct Mock {
         descriptor: EngineDescriptor,
+    }
+
+    struct BaselineOcr {
+        descriptor: EngineDescriptor,
+        pages: Arc<Mutex<Vec<u32>>>,
+        model_digest: Sha256Digest,
+    }
+
+    impl BaselineOcr {
+        fn new(pages: Arc<Mutex<Vec<u32>>>, model_digest: Sha256Digest) -> Self {
+            Self {
+                descriptor: EngineDescriptor {
+                    id: "ocr.fp2-fixture".into(),
+                    version: "1.0.0".into(),
+                    capabilities: BTreeSet::from([Capability::OcrPage]),
+                    compatibility: vec![EngineCompatibility {
+                        backend: BackendId::new("fixture").unwrap(),
+                        devices: BTreeSet::from([DeviceKind::Cpu]),
+                    }],
+                    deterministic: true,
+                    network_use: NetworkUse::None,
+                    max_concurrency: 1,
+                },
+                pages,
+                model_digest,
+            }
+        }
+    }
+
+    impl Engine for BaselineOcr {
+        fn descriptor(&self) -> &EngineDescriptor {
+            &self.descriptor
+        }
+
+        fn health(&mut self, _request: HealthRequest) -> Result<HealthReport, EngineError> {
+            Ok(HealthReport {
+                status: HealthStatus::Healthy,
+                dependencies: Vec::new(),
+                message: "purpose-built deterministic fixture engine ready".into(),
+            })
+        }
+
+        fn estimate(
+            &mut self,
+            _request: &EngineRequest,
+            _inventory: &HardwareInventory,
+        ) -> Result<Vec<EngineCandidate>, EngineError> {
+            Ok(vec![EngineCandidate {
+                engine_id: self.descriptor.id.clone(),
+                backend: BackendId::new("fixture").unwrap(),
+                device: DeviceId::new(DeviceKind::Cpu, None).unwrap(),
+                resources: ResourceEstimate {
+                    peak_ram: Estimate::Known(Bytes::new(32 * Bytes::MIB)),
+                    warm_ram: Estimate::Known(Bytes::new(0)),
+                    peak_vram: Estimate::Known(Bytes::new(0)),
+                    warm_vram: Estimate::Known(Bytes::new(0)),
+                    latency: Estimate::Known(Millis::new(1)),
+                    remote_cost: Estimate::Known(MicroUsd::new(0)),
+                    quality: Estimate::Unknown,
+                    source: Estimate::Known(EstimateSource {
+                        confidence: EstimateConfidence::Conservative,
+                        method: "purpose-built FP2 orchestration fixture".into(),
+                    }),
+                },
+            }])
+        }
+
+        fn execute(
+            &mut self,
+            request: EngineRequest,
+            context: &ExecutionContext<'_>,
+        ) -> Result<EngineResponse, EngineError> {
+            context.checkpoint()?;
+            let rgba = context.blobs.resolve(&request.input)?;
+            assert!(!rgba.is_empty());
+            let page_index = request.page_index.unwrap();
+            self.pages.lock().unwrap().push(page_index);
+            let provenance = DeterministicProvenance {
+                schema_version: CURRENT_SCHEMA_VERSION,
+                input_digest: request.input.expected_digest.unwrap(),
+                engine_id: self.descriptor.id.clone(),
+                engine_version: self.descriptor.version.clone(),
+                model_digest: Some(self.model_digest),
+                parameters: request.parameters.clone(),
+                stage: Stage::Ocr,
+            };
+            let layer_id = LayerId::derive(&[
+                provenance.identity_digest().unwrap().as_bytes(),
+                &page_index.to_be_bytes(),
+            ]);
+            let text = format!("fixture OCR page {page_index}");
+            let evidence = Evidence {
+                id: EvidenceId::derive(&[layer_id.as_str().as_bytes(), text.as_bytes()]),
+                layer_id: layer_id.clone(),
+                content: EvidenceContent::Text { text },
+                geometry: None,
+                geometry_quality: GeometryQuality::Unknown,
+                confidence: None,
+                provenance,
+                engine_metadata: BTreeMap::from([(
+                    "region_kind".into(),
+                    serde_json::json!("paragraph"),
+                )]),
+            };
+            Ok(EngineResponse {
+                request_id: request.request_id,
+                evidence: vec![evidence],
+                metadata: BTreeMap::from([("layer_id".into(), serde_json::json!(layer_id))]),
+            })
+        }
     }
 
     impl Mock {
@@ -1460,5 +2014,124 @@ mod tests {
             converter.convert(bytes.to_vec()),
             Err(RuntimeError::OcrUnavailable { page_index: 0 })
         ));
+    }
+
+    #[test]
+    fn baseline_plan_requires_ocr_even_for_high_quality_native_text() {
+        let bytes = include_bytes!("../../../fixtures/pdf/born-digital.pdf");
+        let options = ConversionOptions {
+            document_profile: DocumentProfile::Baseline,
+            ..ConversionOptions::default()
+        };
+        let mut converter = Converter::new(options);
+        let plan = converter.plan(bytes).unwrap();
+        assert!(plan.stages.iter().any(|stage| {
+            stage.page_index == Some(0)
+                && stage.stage == "ocr.ocrs"
+                && stage.decision == PlanDecision::Unavailable
+                && stage.explanation.contains("baseline profile requires OCR")
+        }));
+    }
+
+    #[test]
+    fn fp2_baseline_ocrs_born_digital_scan_and_hybrid_and_materializes_checkpoint() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let model_digest = Sha256Digest::of_bytes(b"purpose-built-fp2-ocr-fixture");
+        for bytes in [
+            include_bytes!("../../../fixtures/pdf/born-digital.pdf").as_slice(),
+            include_bytes!("../../../fixtures/pdf/image-only.pdf").as_slice(),
+            include_bytes!("../../../fixtures/pdf/hybrid.pdf").as_slice(),
+        ] {
+            let mut converter = Converter::with_ocr_engine(
+                ConversionOptions::default(),
+                BaselineOcr::new(calls.clone(), model_digest),
+                ModelId::derive(&[b"fp2-fixture-model"]),
+                Some(model_digest),
+            )
+            .unwrap();
+            let result = converter.baseline(bytes.to_vec()).unwrap();
+            assert_eq!(result.survey.pages.len(), 1);
+            assert_eq!(result.summary.pages, 1);
+            assert_eq!(result.summary.nonblank_pages, 1);
+            assert_eq!(result.summary.ocr_pages, 1);
+            assert!(result.summary.evidence_bytes.get() > 0);
+            eprintln!(
+                "fp2-fixture kind={:?} evidence_bytes_per_page={:.1} searchable={}/{} layout={}/{} geometry_coverage={:.3}",
+                result.survey.pages[0].content_hint,
+                result.summary.evidence_bytes_per_page,
+                result.summary.searchable_pages,
+                result.summary.pages,
+                result.summary.layout_pages,
+                result.summary.pages,
+                result.summary.useful_provenance_geometry_coverage,
+            );
+            let has_native = result.summary.native_text_pages == 1;
+            assert_eq!(
+                result
+                    .delta
+                    .diagnostics
+                    .iter()
+                    .any(|item| item.code == "baseline.native_ocr_disagreement"),
+                has_native
+            );
+            if result.survey.pages[0].content_hint == PageContentHint::BornDigital {
+                assert!(
+                    result.conversion.document.pages[0]
+                        .regions
+                        .iter()
+                        .any(|region| region.kind == RegionKind::Heading)
+                );
+                assert!(!result.conversion.document.pages[0].reading_order.is_empty());
+            }
+            assert!(
+                result.conversion.document.pages[0]
+                    .layers
+                    .iter()
+                    .any(|layer| layer.kind == SourceLayerKind::Ocr)
+            );
+            assert_eq!(
+                Sha256Digest::of_bytes(&result.checkpoint_json),
+                result
+                    .manifest
+                    .materialized_ir_checkpoint
+                    .as_ref()
+                    .unwrap()
+                    .document_ir_logical_sha256
+            );
+            let initial = Document {
+                schema_version: result.conversion.document.schema_version,
+                id: result.conversion.document.id.clone(),
+                input_digest: result.conversion.document.input_digest,
+                metadata: result.conversion.document.metadata.clone(),
+                pages: Vec::new(),
+            };
+            assert_eq!(
+                materialize_state(
+                    &initial,
+                    std::slice::from_ref(&result.delta),
+                    &result.manifest
+                )
+                .unwrap()
+                .to_canonical_json()
+                .unwrap(),
+                result.checkpoint_json
+            );
+        }
+        assert_eq!(*calls.lock().unwrap(), vec![0, 0, 0]);
+    }
+
+    #[test]
+    fn native_pdf_text_never_claims_layout_geometry() {
+        let bytes = include_bytes!("../../../fixtures/pdf/born-digital.pdf").to_vec();
+        let mut converter = Converter::new(ConversionOptions::default());
+        let result = converter.convert(bytes).unwrap();
+        let native = result.document.pages[0]
+            .regions
+            .iter()
+            .flat_map(|region| &region.evidence)
+            .find(|evidence| evidence.provenance.stage == Stage::NativeExtract)
+            .unwrap();
+        assert_eq!(native.geometry_quality, GeometryQuality::PageOnly);
+        assert_eq!(native.geometry, Some(result.document.pages[0].bounds));
     }
 }

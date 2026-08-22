@@ -88,6 +88,92 @@ pub struct PdfInspection {
     pub pages: Vec<PdfPage>,
 }
 
+/// Cheap, deterministic classification of a PDF page before OCR.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+#[schemars(rename_all = "snake_case")]
+pub enum PageContentHint {
+    /// No native text, image invocation, or painted vector path was observed.
+    Blank,
+    /// Native text was observed without image invocations.
+    BornDigital,
+    /// Image invocations were observed without native text.
+    Scanned,
+    /// Native text and image invocations were both observed.
+    Hybrid,
+    /// Content operators were observed but native text and image evidence were inconclusive.
+    OtherContent,
+}
+
+/// Per-page evidence gathered without rasterization or OCR.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PdfPageSurvey {
+    /// Zero-based page index.
+    pub page_index: u32,
+    /// Effective crop-box width in PDF points.
+    pub width_points: f64,
+    /// Effective crop-box height in PDF points.
+    pub height_points: f64,
+    /// Number of non-whitespace native Unicode scalar values.
+    pub native_characters: u64,
+    /// Native character count divided by page area in square points.
+    pub native_characters_per_square_point: f64,
+    /// Number of PDF image/form invocation operators. Forms are not misreported as images.
+    pub xobject_invocations: u64,
+    /// XObject invocation count divided by page area in square points.
+    pub xobject_invocations_per_square_point: f64,
+    /// Number of PDF text-show operators, including text that could not be decoded.
+    pub text_show_operations: u64,
+    /// Number of painted vector-path operators.
+    pub painted_vector_paths: u64,
+    /// Painted vector-path count divided by page area in square points.
+    pub painted_vector_paths_per_square_point: f64,
+    /// Coarse pre-OCR content hint.
+    pub content_hint: PageContentHint,
+    /// Unicode script families observed in native text.
+    pub script_hints: Vec<String>,
+    /// Exact normalized native-text fingerprint, absent when no text was recovered.
+    pub native_text_sha256: Option<Sha256Digest>,
+    /// Deterministic 64-bit token SimHash for near-duplicate candidate generation.
+    pub native_text_simhash: Option<String>,
+    /// Whether refinement is likely valuable because native text is absent or mixed with imagery.
+    pub high_value_candidate: bool,
+    /// Conservative page-level candidate kinds for later region refinement.
+    pub candidate_kinds: Vec<String>,
+}
+
+/// Exact repeated first/last native-line hint across pages; this is not a header/footer decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RepeatedMarginTextHint {
+    /// `first_native_line` or `last_native_line`.
+    pub position: String,
+    /// Exact normalized line fingerprint; source text is not duplicated in the survey.
+    pub text_sha256: Sha256Digest,
+    /// Pages on which the exact line occurs in that position.
+    pub page_indexes: Vec<u32>,
+}
+
+/// Cheap deterministic survey completed before any page rasterization or OCR.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PdfSurvey {
+    /// Exact source identity.
+    pub digest: Sha256Digest,
+    /// Container byte count.
+    pub bytes: Bytes,
+    /// Loaded indirect-object count.
+    pub object_count: u64,
+    /// Selected deterministic PDF Info/Catalog metadata. Missing keys remain absent.
+    pub container_metadata: std::collections::BTreeMap<String, String>,
+    /// Ordered page observations.
+    pub pages: Vec<PdfPageSurvey>,
+    /// Document-level script families observed in native text.
+    pub script_hints: Vec<String>,
+    /// Coarse deterministic family features suitable for grouping, not a family decision.
+    pub family_features: Vec<String>,
+    /// Exact repeated edge-line candidates for later header/footer classification.
+    pub repeated_margin_text_hints: Vec<RepeatedMarginTextHint>,
+}
+
 /// Deterministic RGBA8 page raster.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RasterPage {
@@ -146,6 +232,127 @@ impl PdfDocument {
     /// Returns the deterministic inspection.
     pub const fn inspection(&self) -> &PdfInspection {
         &self.inspection
+    }
+
+    /// Surveys container and content-stream evidence without rendering or OCR.
+    pub fn survey(&self) -> Result<PdfSurvey, PdfError> {
+        let page_ids = self.syntax.get_pages();
+        let mut pages = Vec::with_capacity(self.inspection.pages.len());
+        let mut native_texts = Vec::with_capacity(self.inspection.pages.len());
+        let mut all_scripts = std::collections::BTreeSet::new();
+        for page in &self.inspection.pages {
+            let page_id = *page_ids
+                .values()
+                .nth(page.index as usize)
+                .ok_or(PdfError::PageOutOfRange(page.index))?;
+            let content = self.syntax.get_page_content(page_id);
+            let operations = lopdf::content::Content::decode(&content)
+                .map_err(|error| PdfError::Malformed(error.to_string()))?
+                .operations;
+            let xobject_invocations = operations
+                .iter()
+                .filter(|operation| operation.operator == "Do")
+                .count() as u64;
+            let painted_vector_paths = operations
+                .iter()
+                .filter(|operation| {
+                    matches!(
+                        operation.operator.as_str(),
+                        "S" | "s" | "f" | "F" | "f*" | "B" | "B*" | "b" | "b*"
+                    )
+                })
+                .count() as u64;
+            let text_show_operations = operations
+                .iter()
+                .filter(|operation| matches!(operation.operator.as_str(), "Tj" | "TJ" | "'" | "\""))
+                .count() as u64;
+            let native_text = page
+                .native_text
+                .iter()
+                .map(|span| span.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            native_texts.push(native_text.clone());
+            let native_characters = native_text
+                .chars()
+                .filter(|character| !character.is_whitespace())
+                .count() as u64;
+            let scripts = script_hints(&native_text);
+            all_scripts.extend(scripts.iter().cloned());
+            let content_hint = match (native_characters > 0, xobject_invocations > 0) {
+                (true, true) => PageContentHint::Hybrid,
+                (true, false) => PageContentHint::BornDigital,
+                (false, true) => PageContentHint::Scanned,
+                (false, false) if painted_vector_paths > 0 || text_show_operations > 0 => {
+                    PageContentHint::OtherContent
+                }
+                (false, false) => PageContentHint::Blank,
+            };
+            let area = page.crop_box.width() * page.crop_box.height();
+            pages.push(PdfPageSurvey {
+                page_index: page.index,
+                width_points: page.crop_box.width(),
+                height_points: page.crop_box.height(),
+                native_characters,
+                native_characters_per_square_point: if area > 0.0 {
+                    native_characters as f64 / area
+                } else {
+                    0.0
+                },
+                xobject_invocations,
+                xobject_invocations_per_square_point: if area > 0.0 {
+                    xobject_invocations as f64 / area
+                } else {
+                    0.0
+                },
+                text_show_operations,
+                painted_vector_paths,
+                painted_vector_paths_per_square_point: if area > 0.0 {
+                    painted_vector_paths as f64 / area
+                } else {
+                    0.0
+                },
+                content_hint,
+                script_hints: scripts,
+                native_text_sha256: (!native_text.is_empty())
+                    .then(|| Sha256Digest::of_bytes(native_text.as_bytes())),
+                native_text_simhash: token_simhash(&native_text),
+                high_value_candidate: matches!(
+                    content_hint,
+                    PageContentHint::Scanned
+                        | PageContentHint::Hybrid
+                        | PageContentHint::OtherContent
+                ),
+                candidate_kinds: candidate_kinds(
+                    &native_text,
+                    xobject_invocations,
+                    painted_vector_paths,
+                ),
+            });
+        }
+        let mut family_features = pages
+            .iter()
+            .map(|page| {
+                format!(
+                    "page-size:{:.0}x{:.0}",
+                    page.width_points, page.height_points
+                )
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        family_features.insert(format!("pages:{}", pages.len()));
+        for kind in pages.iter().map(|page| page.content_hint) {
+            family_features.insert(format!("content:{}", content_hint_name(kind)));
+        }
+        Ok(PdfSurvey {
+            digest: self.inspection.digest,
+            bytes: self.inspection.bytes,
+            object_count: self.syntax.objects.len() as u64,
+            container_metadata: container_metadata(&self.syntax),
+            pages,
+            script_hints: all_scripts.into_iter().collect(),
+            family_features: family_features.into_iter().collect(),
+            repeated_margin_text_hints: repeated_margin_text_hints(&native_texts),
+        })
     }
 
     /// Renders one page at the requested DPI using the pure-Rust Hayro renderer.
@@ -213,6 +420,16 @@ impl PdfDocument {
     /// Returns the parser object count for trace and limit diagnostics.
     pub fn object_count(&self) -> usize {
         self.syntax.objects.len()
+    }
+}
+
+const fn content_hint_name(hint: PageContentHint) -> &'static str {
+    match hint {
+        PageContentHint::Blank => "blank",
+        PageContentHint::BornDigital => "born_digital",
+        PageContentHint::Scanned => "scanned",
+        PageContentHint::Hybrid => "hybrid",
+        PageContentHint::OtherContent => "other_content",
     }
 }
 
@@ -361,6 +578,152 @@ fn normalize_native_text(text: &str) -> String {
     text.replace('\0', "").trim().to_string()
 }
 
+fn container_metadata(document: &LoDocument) -> std::collections::BTreeMap<String, String> {
+    let mut metadata = std::collections::BTreeMap::new();
+    if let Ok(info) = document
+        .trailer
+        .get_deref(b"Info", document)
+        .and_then(Object::as_dict)
+    {
+        for (pdf_key, stable_key) in [
+            (b"Title".as_slice(), "title"),
+            (b"Author".as_slice(), "author"),
+            (b"Subject".as_slice(), "subject"),
+            (b"Keywords".as_slice(), "keywords"),
+            (b"Creator".as_slice(), "creator"),
+            (b"Producer".as_slice(), "producer"),
+        ] {
+            if let Ok(bytes) = info.get(pdf_key).and_then(Object::as_str) {
+                let value = String::from_utf8_lossy(bytes).trim().to_string();
+                if !value.is_empty() {
+                    metadata.insert(stable_key.into(), value);
+                }
+            }
+        }
+    }
+    if let Ok(catalog) = document.catalog()
+        && let Ok(bytes) = catalog.get(b"Lang").and_then(Object::as_str)
+    {
+        let value = String::from_utf8_lossy(bytes).trim().to_string();
+        if !value.is_empty() {
+            metadata.insert("language".into(), value);
+        }
+    }
+    metadata
+}
+
+fn script_hints(text: &str) -> Vec<String> {
+    let mut scripts = std::collections::BTreeSet::new();
+    for character in text.chars().filter(|character| character.is_alphabetic()) {
+        let code = character as u32;
+        let script = if code <= 0x024f {
+            "latin"
+        } else if (0x0370..=0x03ff).contains(&code) {
+            "greek"
+        } else if (0x0400..=0x052f).contains(&code) {
+            "cyrillic"
+        } else if (0x0590..=0x05ff).contains(&code) {
+            "hebrew"
+        } else if (0x0600..=0x06ff).contains(&code) {
+            "arabic"
+        } else if (0x3040..=0x30ff).contains(&code) {
+            "japanese_kana"
+        } else if (0x3400..=0x9fff).contains(&code) {
+            "han"
+        } else if (0xac00..=0xd7af).contains(&code) {
+            "hangul"
+        } else {
+            "other"
+        };
+        scripts.insert(script.to_string());
+    }
+    scripts.into_iter().collect()
+}
+
+fn candidate_kinds(text: &str, xobjects: u64, painted_paths: u64) -> Vec<String> {
+    let mut kinds = std::collections::BTreeSet::new();
+    if xobjects > 0 {
+        kinds.insert("figure".to_string());
+    }
+    if text.lines().any(|line| line.contains(['|', '\t'])) {
+        kinds.insert("table".to_string());
+    }
+    if text.contains(['=', '∑', '∫', '√']) {
+        kinds.insert("formula".to_string());
+    }
+    if painted_paths > 0 {
+        kinds.insert("vector_graphic".to_string());
+    }
+    kinds.into_iter().collect()
+}
+
+fn repeated_margin_text_hints(texts: &[String]) -> Vec<RepeatedMarginTextHint> {
+    let mut occurrences: std::collections::BTreeMap<(&str, String), Vec<u32>> =
+        std::collections::BTreeMap::new();
+    for (page_index, text) in texts.iter().enumerate() {
+        let lines: Vec<_> = text
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect();
+        if let Some(first) = lines.first() {
+            occurrences
+                .entry(("first_native_line", (*first).to_string()))
+                .or_default()
+                .push(page_index as u32);
+        }
+        if let Some(last) = lines.last()
+            && lines.first() != Some(last)
+        {
+            occurrences
+                .entry(("last_native_line", (*last).to_string()))
+                .or_default()
+                .push(page_index as u32);
+        }
+    }
+    occurrences
+        .into_iter()
+        .filter(|(_, pages)| pages.len() > 1)
+        .map(|((position, text), page_indexes)| RepeatedMarginTextHint {
+            position: position.into(),
+            text_sha256: Sha256Digest::of_bytes(text.as_bytes()),
+            page_indexes,
+        })
+        .collect()
+}
+
+fn token_simhash(text: &str) -> Option<String> {
+    let tokens: Vec<_> = text
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    if tokens.is_empty() {
+        return None;
+    }
+    let mut weights = [0_i64; 64];
+    for token in tokens {
+        let digest = Sha256Digest::of_bytes(token.as_bytes());
+        let mut first = [0_u8; 8];
+        first.copy_from_slice(&digest.as_bytes()[..8]);
+        let fingerprint = u64::from_be_bytes(first);
+        for (bit, weight) in weights.iter_mut().enumerate() {
+            *weight += if fingerprint & (1_u64 << bit) == 0 {
+                -1
+            } else {
+                1
+            };
+        }
+    }
+    let fingerprint = weights
+        .iter()
+        .enumerate()
+        .fold(0_u64, |value, (bit, weight)| {
+            value | (u64::from(*weight >= 0) << bit)
+        });
+    Some(format!("{fingerprint:016x}"))
+}
+
 fn check_input_size(actual: u64, limits: &PdfLimits) -> Result<(), PdfError> {
     if actual > limits.maximum_input_bytes.get() {
         Err(PdfError::LimitExceeded {
@@ -478,6 +841,54 @@ mod tests {
         assert_eq!(
             hybrid.inspection().pages[0].native_text[0].text,
             "HYBRID NATIVE HEADING"
+        );
+    }
+
+    #[test]
+    fn cheap_survey_distinguishes_mixed_fixture_modes_without_rendering() {
+        let survey = |bytes: &[u8]| {
+            PdfDocument::from_bytes(bytes.to_vec(), PdfLimits::default())
+                .unwrap()
+                .survey()
+                .unwrap()
+        };
+        let born = survey(include_bytes!("../../../fixtures/pdf/born-digital.pdf"));
+        let scan = survey(include_bytes!("../../../fixtures/pdf/image-only.pdf"));
+        let hybrid = survey(include_bytes!("../../../fixtures/pdf/hybrid.pdf"));
+        assert_eq!(born.pages[0].content_hint, PageContentHint::BornDigital);
+        assert_eq!(scan.pages[0].content_hint, PageContentHint::Scanned);
+        assert_eq!(hybrid.pages[0].content_hint, PageContentHint::Hybrid);
+        assert!(born.pages[0].native_text_sha256.is_some());
+        assert!(born.pages[0].native_text_simhash.is_some());
+        assert!(born.pages[0].script_hints.contains(&"latin".into()));
+        assert_eq!(scan.pages[0].native_text_sha256, None);
+        assert!(scan.pages[0].high_value_candidate);
+        assert_eq!(
+            born,
+            survey(include_bytes!("../../../fixtures/pdf/born-digital.pdf"))
+        );
+    }
+
+    #[test]
+    fn checked_in_survey_schema_and_golden_match_contract() {
+        let document = PdfDocument::from_bytes(
+            include_bytes!("../../../fixtures/pdf/born-digital.pdf").to_vec(),
+            PdfLimits::default(),
+        )
+        .unwrap();
+        let expected: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../fixtures/pdf-survey-born-digital-v1.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            expected,
+            serde_json::to_value(document.survey().unwrap()).unwrap()
+        );
+        let expected_schema: serde_json::Value =
+            serde_json::from_str(include_str!("../../../schemas/pdf-survey-v1.json")).unwrap();
+        assert_eq!(
+            expected_schema,
+            serde_json::to_value(schemars::schema_for!(PdfSurvey)).unwrap()
         );
     }
 

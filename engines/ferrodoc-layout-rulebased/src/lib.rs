@@ -227,6 +227,11 @@ fn text_blocks(text: &str) -> Vec<String> {
             blocks.push(line.to_owned());
             continue;
         }
+        if looks_like_list_item(line) {
+            flush(&mut paragraph, &mut blocks);
+            blocks.push(line.to_owned());
+            continue;
+        }
         if !paragraph.is_empty() && !paragraph.ends_with('-') {
             paragraph.push(' ');
         }
@@ -242,9 +247,29 @@ fn text_blocks(text: &str) -> Vec<String> {
 fn classify(text: &str) -> RegionKind {
     if looks_like_heading(text) {
         RegionKind::Heading
+    } else if looks_like_list_item(text) {
+        RegionKind::ListItem
     } else {
         RegionKind::Paragraph
     }
+}
+
+fn looks_like_list_item(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    if ["- ", "* ", "• "]
+        .iter()
+        .any(|prefix| trimmed.starts_with(prefix))
+    {
+        return true;
+    }
+    let prefix = trimmed
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .count();
+    prefix > 0
+        && trimmed
+            .get(prefix..)
+            .is_some_and(|rest| rest.starts_with(". ") || rest.starts_with(") "))
 }
 
 fn looks_like_heading(text: &str) -> bool {
@@ -320,6 +345,16 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first.evidence.len(), 2);
         assert_eq!(first.evidence[0].engine_metadata["region_kind"], "heading");
+    }
+
+    #[test]
+    fn list_items_remain_coarse_candidates_in_source_order() {
+        assert_eq!(classify("- first item"), RegionKind::ListItem);
+        assert_eq!(classify("2) second item"), RegionKind::ListItem);
+        assert_eq!(
+            text_blocks("Intro text.\n- first item\n2) second item"),
+            vec!["Intro text.", "- first item", "2) second item"]
+        );
     }
 
     #[test]

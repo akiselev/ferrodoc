@@ -53,6 +53,8 @@ Ferrodoc never downloads models during build or conversion. The checked-in [OCRS
 
 `plan` accepts profiles plus hard `--max-ram`, `--max-vram`, `--max-cost-microusd`, and `--deadline-ms` constraints. Unknown values fail hard limits unless `--allow-unknown-estimates` explicitly requests guarded execution. `--cache-dir DIR` enables atomic stage caching from input, model, engine, schema, page, seed, and normalized-parameter identity.
 
+Use `--document-profile baseline` for the FP2 full-document baseline: every survey-nonblank page is rendered and OCRed even when native text is present. Native and OCR evidence remain separate, and native PDF text is page-only geometry unless a future backend supplies qualified positions.
+
 The deterministic foundry, real regression corpus, evaluator contracts, metrics, measurement evidence, held-out rules, and Pareto comparison workflow are described in [Benchmarking and corpus governance](docs/benchmarking.md). The default benchmark smoke is offline and explicitly verifies that missing work scores as failure rather than success.
 
 The router and experiment commands are offline. `router train` writes a model only after re-hashing every conversion trace and benchmark report; its qualification field remains `rejected` unless it beats all declared deterministic baselines on identical held-out cases. `research run` reads immutable reports, re-hashes protected truth and evaluator files before and after scoring, observes cumulative budgets, and atomically writes resumable ledger state.

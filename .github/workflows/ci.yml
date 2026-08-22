@@ -23,6 +23,7 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo run --locked -p ferrodoc-ir --example export_snapshots
+      - run: cargo run --locked -p ferrodoc-pdf --example export_survey_snapshots
       - run: cargo run --locked -p ferrodoc-pdf --example generate_fixtures
       - run: cargo run --locked -p ferrodoc-protocol --example export_fixtures
       - run: cargo run --locked -p ferrodoc-foundry --example export_foundry_schemas

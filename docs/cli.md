@@ -4,7 +4,7 @@ Ferrodoc v0.2 stabilizes command names, precedence, exit status, and persistent 
 
 ## Configuration precedence
 
-For conversion options, an explicit command-line argument wins over its corresponding environment variable, which wins over the compiled default. The supported environment variables are `FERRODOC_NATIVE_CHARACTER_THRESHOLD`, `FERRODOC_OCR_DPI`, `FERRODOC_OCR_ENGINE`, `FERRODOC_OCRS_MODEL_DIR`, `FERRODOC_CACHE_DIR`, and `FERRODOC_MODEL_STORE`. Hard RAM/VRAM/cost/deadline limits and profiles are command-line only in v0.2. OCRS is the default engine; Tesseract is accepted only by a binary built with its feature. An OCRS model directory is rejected with Tesseract.
+For conversion options, an explicit command-line argument wins over its corresponding environment variable, which wins over the compiled default. The supported environment variables are `FERRODOC_NATIVE_CHARACTER_THRESHOLD`, `FERRODOC_OCR_DPI`, `FERRODOC_OCR_ENGINE`, `FERRODOC_OCRS_MODEL_DIR`, `FERRODOC_CACHE_DIR`, and `FERRODOC_MODEL_STORE`. Hard RAM/VRAM/cost/deadline limits and profiles are command-line only in v0.2. `--document-profile baseline` renders and OCRs every page that the cheap survey did not deterministically prove blank, including pages with high-quality native text; it therefore requires a healthy OCR engine and explicit model assets. OCRS is the default engine; Tesseract is accepted only by a binary built with its feature. An OCRS model directory is rejected with Tesseract.
 
 Unknown options, invalid Unicode environment values, invalid ranges, and incompatible combinations fail rather than being ignored.
 

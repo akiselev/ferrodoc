@@ -53,7 +53,7 @@ fn run(arguments: Vec<std::ffi::OsString>) -> Result<(), String> {
             report.validate().map_err(|error| error.to_string())
         }
         [command, corpus_root, manifest, executable, engine, model_dir, output]
-            if command == "qualify-cli" =>
+            if command == "qualify-cli" || command == "qualify-baseline-cli" =>
         {
             let corpus_root = PathBuf::from(corpus_root);
             let manifest: CorpusManifest = read_json(Path::new(manifest))?;
@@ -63,11 +63,12 @@ fn run(arguments: Vec<std::ffi::OsString>) -> Result<(), String> {
                 Path::new(executable),
                 &engine.to_string_lossy(),
                 (model_dir != "-").then(|| Path::new(model_dir)),
+                command == "qualify-baseline-cli",
             )?;
             write_json(Path::new(output), &report)
         }
         _ => Err(
-            "usage: ferrodoc-bench evaluate <corpus-root> <manifest.json> <predictions.json> <report.json> | compare <baseline.json> <candidate.json> <comparison.json> | verify-report <report.json> | qualify-cli <corpus-root> <manifest.json> <ferrodoc-executable> <ocrs|tesseract> <model-dir|-> <report.json>"
+            "usage: ferrodoc-bench evaluate <corpus-root> <manifest.json> <predictions.json> <report.json> | compare <baseline.json> <candidate.json> <comparison.json> | verify-report <report.json> | <qualify-cli|qualify-baseline-cli> <corpus-root> <manifest.json> <ferrodoc-executable> <ocrs|tesseract> <model-dir|-> <report.json>"
                 .into(),
         ),
     }
@@ -79,6 +80,7 @@ fn qualify_cli(
     executable: &Path,
     engine: &str,
     model_dir: Option<&Path>,
+    baseline_profile: bool,
 ) -> Result<BenchmarkReport, String> {
     if !executable.is_absolute() || !executable.is_file() {
         return Err("qualification requires an existing absolute Ferrodoc executable".into());
@@ -110,6 +112,9 @@ fn qualify_cli(
         command
             .args(["convert", "--format", "json", "--ocr-engine", engine])
             .arg(&document);
+        if baseline_profile {
+            command.args(["--document-profile", "baseline"]);
+        }
         if let Some(model_dir) = model_dir {
             command.arg("--ocrs-model-dir").arg(model_dir);
         }

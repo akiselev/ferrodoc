@@ -7,7 +7,8 @@ The phase boundary is deliberate:
 - FP0/FDX0 defines immutable `EvidenceDelta` artifacts, content-identifiable `DocumentStateManifest` states, evidence-grade geometry/table spans, and page-qualified targets.
 - FP1 executes capabilities against those scopes through the runtime contract in
   [`FDX1_SCOPED_EXECUTION.md`](FDX1_SCOPED_EXECUTION.md).
-- FP2 will produce survey and baseline profiles from real PDFs.
+- FP2 produces cheap surveys and full-document baseline states with honest native geometry in
+  [`FDX2_BASELINE_GEOMETRY.md`](FDX2_BASELINE_GEOMETRY.md).
 - FP3 will add targeted structure/precision engines.
 - FP4 will persist/cache deltas and checkpoints and benchmark replay.
 
@@ -28,4 +29,5 @@ Regenerate them explicitly with:
 ```bash
 cargo run --locked -p ferrodoc-ir --example export_snapshots
 cargo run --locked -p ferrodoc-protocol --example export_fixtures
+cargo run --locked -p ferrodoc-pdf --example export_survey_snapshots
 ```

@@ -61,6 +61,9 @@ impl Configuration {
             .unwrap_or(options.native_character_threshold);
         options.ocr_dpi = arguments.ocr_dpi.or(env_dpi).unwrap_or(options.ocr_dpi);
         options.profile = arguments.profile.unwrap_or(options.profile);
+        options.document_profile = arguments
+            .document_profile
+            .unwrap_or(options.document_profile);
         options.max_ram = arguments.max_ram;
         options.max_vram = arguments.max_vram;
         options.max_remote_cost = arguments.max_remote_cost;

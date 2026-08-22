@@ -1,0 +1,37 @@
+{
+  "digest": "025471e0be97d33c8814070cd2c5fe675b2145c9e58f51d5802676495c221a9c",
+  "bytes": 695,
+  "object_count": 7,
+  "container_metadata": {},
+  "pages": [
+    {
+      "page_index": 0,
+      "width_points": 595.0,
+      "height_points": 842.0,
+      "native_characters": 117,
+      "native_characters_per_square_point": 0.00023353759556078965,
+      "xobject_invocations": 0,
+      "xobject_invocations_per_square_point": 0.0,
+      "text_show_operations": 3,
+      "painted_vector_paths": 0,
+      "painted_vector_paths_per_square_point": 0.0,
+      "content_hint": "born_digital",
+      "script_hints": [
+        "latin"
+      ],
+      "native_text_sha256": "83b58855fe922db613595dd4dd8c756cebd6c70b32357707e9fe8a0a26feb0b2",
+      "native_text_simhash": "d7b7f82cc4dcafd8",
+      "high_value_candidate": false,
+      "candidate_kinds": []
+    }
+  ],
+  "script_hints": [
+    "latin"
+  ],
+  "family_features": [
+    "content:born_digital",
+    "page-size:595x842",
+    "pages:1"
+  ],
+  "repeated_margin_text_hints": []
+}
