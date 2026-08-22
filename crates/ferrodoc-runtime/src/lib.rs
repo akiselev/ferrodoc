@@ -2337,6 +2337,7 @@ mod tests {
                         stage: Stage::Layout,
                         build: Sha256Digest::of_bytes(b"table-rulebased-build-v1"),
                         model_digest: None,
+                        parameters: BTreeMap::new(),
                         produces: Capability::TableRecognize,
                         requires: BTreeSet::from([Capability::LayoutDetect]),
                     },
