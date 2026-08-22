@@ -6,6 +6,7 @@ The default `cpu-minimal` plus `process-engines` feature set is pure Rust, offli
 
 - [Native PDF extraction](native-pdf.md)
 - [Rule-based layout](layout-rulebased.md)
+- [Bounded rule-based tables](table-rulebased.md)
 - [OCRS CPU OCR](ocrs.md)
 - [Tesseract CPU OCR](tesseract.md)
 - [Deterministic mock](mock.md)

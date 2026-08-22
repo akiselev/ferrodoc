@@ -693,6 +693,7 @@ dependencies = [
  "ferrodoc-layout-rulebased",
  "ferrodoc-pdf",
  "ferrodoc-protocol",
+ "ferrodoc-table-rulebased",
  "nvml-wrapper",
  "schemars",
  "serde",
@@ -700,6 +701,18 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "uuid",
+]
+
+[[package]]
+name = "ferrodoc-table-rulebased"
+version = "0.1.0"
+dependencies = [
+ "ferrodoc-core",
+ "ferrodoc-engine-api",
+ "ferrodoc-ir",
+ "ferrodoc-plugin-sdk",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

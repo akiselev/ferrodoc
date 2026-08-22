@@ -6,21 +6,23 @@ use std::{
 };
 
 use ferrodoc_core::{
-    BlobId, BlobRange, Capability, MediaType, PageId, RequestId, ScopedBlob, Sha256Digest,
+    BlobId, BlobRange, Capability, CoordinateSpace, CoordinateTransform, EvidenceId, MediaType,
+    PageId, PageRect, Rect, RegionId, RequestId, ScopedBlob, Sha256Digest, Unit,
 };
 use ferrodoc_engine_api::{
     BlobResolver, CancellationToken, Engine, EngineError, EngineRequest, ExecutionContext,
-    TraceSink,
+    SOURCE_TEXT_EVIDENCE_PARAMETER, SourceTextEvidence, TraceSink,
 };
 #[cfg(unix)]
 use ferrodoc_engine_command::{Argument, CommandConfig, CommandEngine};
 use ferrodoc_engine_ocrs::{OcrsEngine, RGBA8_MEDIA_TYPE};
 #[cfg(feature = "tesseract")]
 use ferrodoc_engine_tesseract::TesseractEngine;
-use ferrodoc_ir::RefinementScope;
+use ferrodoc_ir::{GeometryQuality, PageRegionRef, RefinementScope};
 use ferrodoc_layout_rulebased::RuleBasedLayoutEngine;
 use ferrodoc_pdf::{PdfDocument, PdfLimits};
 use ferrodoc_runtime::{PluginCommand, ProcessConfig, ProcessEngine};
+use ferrodoc_table_rulebased::RuleBasedTableEngine;
 
 struct Resolver(Vec<u8>);
 
@@ -78,6 +80,51 @@ fn layout_wrapper_matches_embedded_when_binary_is_provided() {
     let resolver = Resolver(bytes);
     let context = context(&resolver);
     let mut embedded = RuleBasedLayoutEngine::new();
+    let command = PluginCommand::explicit(PathBuf::from(binary)).unwrap();
+    let mut process = ProcessEngine::spawn(&command, ProcessConfig::default()).unwrap();
+    assert_eq!(
+        embedded.execute(request.clone(), &context).unwrap(),
+        process.execute(request, &context).unwrap()
+    );
+}
+
+#[test]
+fn table_wrapper_matches_embedded_when_binary_is_provided() {
+    let Some(binary) = std::env::var_os("FERRODOC_TEST_TABLE_BINARY") else {
+        return;
+    };
+    let bytes = b"%PDF-minimized-table-process-parity".to_vec();
+    let page_id = PageId::derive(&[b"table-process-page"]);
+    let region_id = RegionId::derive(&[b"table-process-region"]);
+    let geometry = PageRect {
+        page_index: 0,
+        rect: Rect::new(10.0, 10.0, 300.0, 90.0, CoordinateSpace::Pdf, Unit::Point).unwrap(),
+        source_transform: CoordinateTransform::IDENTITY,
+    };
+    let request = EngineRequest {
+        request_id: RequestId::derive(&[b"table-process-parity"]),
+        capability: Capability::TableRecognize,
+        input: scoped(&bytes, "table-input", "application/pdf"),
+        page_index: Some(0),
+        scope: Some(RefinementScope::Regions {
+            regions: BTreeSet::from([PageRegionRef { page_id, region_id }]),
+        }),
+        parameters: BTreeMap::from([(
+            SOURCE_TEXT_EVIDENCE_PARAMETER.into(),
+            serde_json::to_value(vec![SourceTextEvidence {
+                evidence_id: EvidenceId::derive(&[b"table-source-text"]),
+                text: "Pin | Name\n1 | VCC".into(),
+                geometry: Some(geometry),
+                geometry_quality: GeometryQuality::Region,
+            }])
+            .unwrap(),
+        )]),
+        deterministic_seed: None,
+        deadline: None,
+    };
+    let resolver = Resolver(bytes);
+    let context = context(&resolver);
+    let mut embedded = RuleBasedTableEngine::new();
     let command = PluginCommand::explicit(PathBuf::from(binary)).unwrap();
     let mut process = ProcessEngine::spawn(&command, ProcessConfig::default()).unwrap();
     assert_eq!(

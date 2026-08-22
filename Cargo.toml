@@ -13,6 +13,7 @@ members = [
   "crates/ferrodoc-research",
   "crates/ferrodoc-cli",
   "engines/ferrodoc-layout-rulebased",
+  "engines/ferrodoc-table-rulebased",
   "engines/ferrodoc-engine-ocrs",
   "engines/ferrodoc-engine-tesseract",
   "engines/ferrodoc-engine-command",

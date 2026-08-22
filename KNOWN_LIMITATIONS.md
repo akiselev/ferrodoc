@@ -1,6 +1,6 @@
 # Known limitations
 
-- The qualified portfolio includes native PDF, rule-based layout, pure-Rust OCRS, and optional Tesseract CPU OCR. Specialized table, formula, handwriting, and VLM engines are deferred.
+- The qualified portfolio includes native PDF, rule-based layout, the bounded delimiter-table contract oracle, pure-Rust OCRS, and optional Tesseract CPU OCR. General learned/scanned table, formula, handwriting, and VLM engines are deferred.
 - `models pull` intentionally installs from a local acquisition directory. It does not contact a registry or download model bytes.
 - Linux exposes CPU topology and RAM through `/proc`; unsupported platforms report explicit unknowns. NVIDIA inventory is compile-time optional through the `nvml` feature and returns no devices when NVML is unavailable.
 - Embedded execution does not currently attribute process-level peak RAM/VRAM, so measurements remain unknown even though conservative reservations are enforced. Process-level observation is platform-dependent future work.

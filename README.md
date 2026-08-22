@@ -55,6 +55,11 @@ Ferrodoc never downloads models during build or conversion. The checked-in [OCRS
 
 Use `--document-profile baseline` for the FP2 full-document baseline: every survey-nonblank page is rendered and OCRed even when native text is present. Native and OCR evidence remain separate, and native PDF text is page-only geometry unless a future backend supplies qualified positions.
 
+FP3 adds a bounded page-qualified table refinement engine for existing pipe-delimited text
+hypotheses. It preserves exact source spans and inherits source geometry without inventing cell
+boxes. This is a deterministic contract oracle, not a claim of general datasheet or scanned-table
+quality; see [FDX3 targeted tables](docs/fdx/FDX3_TARGETED_TABLES.md).
+
 The deterministic foundry, real regression corpus, evaluator contracts, metrics, measurement evidence, held-out rules, and Pareto comparison workflow are described in [Benchmarking and corpus governance](docs/benchmarking.md). The default benchmark smoke is offline and explicitly verifies that missing work scores as failure rather than success.
 
 The router and experiment commands are offline. `router train` writes a model only after re-hashing every conversion trace and benchmark report; its qualification field remains `rejected` unless it beats all declared deterministic baselines on identical held-out cases. `research run` reads immutable reports, re-hashes protected truth and evaluator files before and after scoring, observes cumulative budgets, and atomically writes resumable ledger state.
@@ -81,4 +86,4 @@ Ferrodoc is dual-licensed under MIT or Apache-2.0.
 
 ## Roadmap
 
-Post-v0.2 work may add specialized table, formula, handwriting, and document-VLM engines; richer reconciliation; larger independently governed benchmarks; region-level routing; and platform sandboxes. These are not qualified v0.2 capabilities. See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) and the plan's post-v0.2 roadmap.
+Post-v0.2 work may add general learned/scanned table, formula, handwriting, and document-VLM engines; richer reconciliation; larger independently governed benchmarks; region-level routing; and platform sandboxes. These are not qualified v0.2 capabilities. See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) and the plan's post-v0.2 roadmap.

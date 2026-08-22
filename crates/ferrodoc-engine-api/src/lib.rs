@@ -14,15 +14,90 @@ use std::{
 };
 
 use ferrodoc_core::{
-    BackendId, Bytes, Capability, DeviceId, DeviceKind, Estimate, EstimateSource, Millis,
-    RequestId, ResourceEstimate, ScopedBlob,
+    BackendId, Bytes, Capability, DeviceId, DeviceKind, Estimate, EstimateSource, EvidenceId,
+    Millis, PageRect, RequestId, ResourceEstimate, ScopedBlob,
 };
-use ferrodoc_ir::{Evidence, RefinementScope};
+use ferrodoc_ir::{Evidence, GeometryQuality, RefinementScope};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod conformance;
+
+/// Normalized request parameter containing text hypotheses owned by the atomic target region.
+pub const SOURCE_TEXT_EVIDENCE_PARAMETER: &str = "ferrodoc.source_text_evidence";
+/// Maximum exact text bytes supplied to one atomic specialist invocation.
+pub const MAX_SOURCE_TEXT_EVIDENCE_BYTES: usize = 4 * Bytes::MIB as usize;
+/// Maximum text hypotheses supplied to one atomic specialist invocation.
+pub const MAX_SOURCE_TEXT_EVIDENCE_RECORDS: usize = 4_096;
+
+/// Exact source text exposed to an evidence-producing region engine.
+///
+/// The containing request remains bound to the immutable source PDF blob. This bounded semantic
+/// context lets a specialist cite existing evidence without receiving host paths or a second IR.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SourceTextEvidence {
+    /// Existing evidence identity that a produced source span may cite.
+    pub evidence_id: EvidenceId,
+    /// Exact UTF-8 text of that evidence record.
+    pub text: String,
+    /// Existing, defensible source geometry.
+    pub geometry: Option<PageRect>,
+    /// Precision of the existing geometry.
+    pub geometry_quality: GeometryQuality,
+}
+
+/// Decodes the normalized target-region text context supplied by the enrichment runtime.
+pub fn source_text_evidence(
+    request: &EngineRequest,
+) -> Result<Vec<SourceTextEvidence>, EngineError> {
+    request
+        .parameters
+        .get(SOURCE_TEXT_EVIDENCE_PARAMETER)
+        .map_or_else(
+            || Ok(Vec::new()),
+            |value| {
+                let sources: Vec<SourceTextEvidence> = serde_json::from_value(value.clone())
+                    .map_err(|_| {
+                        EngineError::new(
+                            EngineErrorCategory::InvalidRequest,
+                            false,
+                            "source text evidence parameter is malformed",
+                        )
+                    })?;
+                let bytes = sources.iter().try_fold(0_usize, |total, source| {
+                    total.checked_add(source.text.len()).ok_or_else(|| {
+                        EngineError::new(
+                            EngineErrorCategory::ResourceExhausted,
+                            false,
+                            "source text evidence size overflow",
+                        )
+                    })
+                })?;
+                if sources.len() > MAX_SOURCE_TEXT_EVIDENCE_RECORDS
+                    || bytes > MAX_SOURCE_TEXT_EVIDENCE_BYTES
+                {
+                    return Err(EngineError::new(
+                        EngineErrorCategory::ResourceExhausted,
+                        false,
+                        "source text evidence exceeds the atomic context limit",
+                    ));
+                }
+                Ok(sources)
+            },
+        )
+}
+
+/// Returns normalized producer configuration without runtime-supplied source evidence.
+///
+/// Source evidence is an invocation input pinned by the base state and delta prerequisites. It is
+/// intentionally excluded from persisted provenance parameters so document text is not duplicated
+/// into every produced record.
+pub fn evidence_parameters(request: &EngineRequest) -> BTreeMap<String, serde_json::Value> {
+    let mut parameters = request.parameters.clone();
+    parameters.remove(SOURCE_TEXT_EVIDENCE_PARAMETER);
+    parameters
+}
 
 /// Engine compatibility for one backend across physical device families.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

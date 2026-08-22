@@ -33,6 +33,7 @@ struct ScopedTableEngine {
     calls: Arc<Mutex<Vec<EngineRequest>>>,
     latency: u64,
     quality: Option<Probability>,
+    wrong_content: bool,
 }
 
 impl ScopedTableEngine {
@@ -62,6 +63,7 @@ impl ScopedTableEngine {
             calls,
             latency,
             quality: quality.map(|value| Probability::new(value).unwrap()),
+            wrong_content: false,
         }
     }
 }
@@ -126,17 +128,27 @@ impl Engine for ScopedTableEngine {
             engine_id: self.descriptor.id.clone(),
             engine_version: self.descriptor.version.clone(),
             model_digest: None,
-            parameters: request.parameters.clone(),
+            parameters: ferrodoc_engine_api::evidence_parameters(&request),
             stage: Stage::Layout,
         };
         let layer_id = LayerId::derive(&[b"table-layer", &scope]);
         let evidence = Evidence {
             id: EvidenceId::derive(&[b"table-evidence", &scope]),
             layer_id,
-            content: EvidenceContent::Unknown {
-                media_type: MediaType::new("application/vnd.ferrodoc.table-candidate+json")
+            content: if self.wrong_content {
+                EvidenceContent::Unknown {
+                    media_type: MediaType::new(
+                        "application/vnd.ferrodoc.not-actually-a-table+json",
+                    )
                     .unwrap(),
-                value: serde_json::json!({"rows": 1, "columns": 1}),
+                    value: serde_json::json!({}),
+                }
+            } else {
+                EvidenceContent::Table {
+                    rows: 1,
+                    columns: 1,
+                    cells: Vec::new(),
+                }
             },
             geometry: Some(PageRect {
                 page_index,
@@ -365,6 +377,44 @@ fn wrong_page_and_missing_capability_fail_closed() {
     assert!(matches!(
         runtime.plan(&unsupported, &document, &manifest).unwrap(),
         EnrichmentPlanningOutcome::NoAdmissiblePlan { .. }
+    ));
+}
+
+#[test]
+fn table_capability_rejects_non_table_engine_evidence() {
+    let (bytes, document, manifest, targets) = fixture();
+    let request = request(&bytes, &manifest, BTreeSet::from([targets[0].clone()]));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut engine = ScopedTableEngine::new(calls);
+    engine.wrong_content = true;
+    let mut runtime = EnrichmentRuntime::new(
+        ConversionOptions {
+            profile: Profile::Offline,
+            ..ConversionOptions::default()
+        },
+        unknown_inventory(),
+        None,
+    );
+    runtime
+        .register_stage(
+            EnrichmentStageDescriptor {
+                id: "table.wrong-content".into(),
+                stage: Stage::Layout,
+                build: Sha256Digest::of_bytes(b"wrong-table-content"),
+                produces: Capability::TableRecognize,
+                requires: BTreeSet::new(),
+            },
+            engine,
+        )
+        .unwrap();
+    let plan = match runtime.plan(&request, &document, &manifest).unwrap() {
+        EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
+        outcome => panic!("unexpected plan: {outcome:?}"),
+    };
+    assert!(matches!(
+        runtime.execute(&request, &plan, bytes, &document, &manifest),
+        Err(RuntimeError::InvalidEnrichment(message))
+            if message.contains("non-table evidence")
     ));
 }
 

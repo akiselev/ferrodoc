@@ -1,0 +1,19 @@
+[package]
+name = "ferrodoc-table-rulebased"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+description = "Deterministic evidence-bearing table engine for Ferrodoc"
+
+[dependencies]
+ferrodoc-core = { path = "../../crates/ferrodoc-core" }
+ferrodoc-engine-api = { path = "../../crates/ferrodoc-engine-api" }
+ferrodoc-ir = { path = "../../crates/ferrodoc-ir" }
+ferrodoc-plugin-sdk = { path = "../../crates/ferrodoc-plugin-sdk" }
+serde.workspace = true
+serde_json.workspace = true

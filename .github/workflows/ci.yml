@@ -58,6 +58,13 @@ jobs:
           FERRODOC_TEST_LAYOUT_BINARY="$target_dir/debug/ferrodoc-layout-rulebased" \
             cargo test --locked -p ferrodoc-runtime --test process_engines \
               layout_wrapper_matches_embedded_when_binary_is_provided -- --exact
+      - name: Test table embedded/process parity
+        run: |
+          cargo build --locked -p ferrodoc-table-rulebased --bin ferrodoc-table-rulebased
+          target_dir=$(cargo metadata --locked --format-version 1 --no-deps | jq -r .target_directory)
+          FERRODOC_TEST_TABLE_BINARY="$target_dir/debug/ferrodoc-table-rulebased" \
+            cargo test --locked -p ferrodoc-runtime --test process_engines \
+              table_wrapper_matches_embedded_when_binary_is_provided -- --exact
       - name: Test experimental command embedded/process parity
         run: |
           cargo build --locked -p ferrodoc-engine-command --bin ferrodoc-engine-command
@@ -164,8 +171,8 @@ jobs:
         with:
           toolchain: 1.95.0
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --locked -p ferrodoc-core -p ferrodoc-ir -p ferrodoc-protocol -p ferrodoc
-      - run: cargo test --locked -p ferrodoc-core -p ferrodoc-ir -p ferrodoc-protocol -p ferrodoc
+      - run: cargo check --locked -p ferrodoc-core -p ferrodoc-ir -p ferrodoc-engine-api -p ferrodoc-protocol -p ferrodoc-table-rulebased -p ferrodoc-runtime -p ferrodoc
+      - run: cargo test --locked -p ferrodoc-core -p ferrodoc-ir -p ferrodoc-engine-api -p ferrodoc-protocol -p ferrodoc-table-rulebased -p ferrodoc-runtime -p ferrodoc
 
   msrv:
     runs-on: ubuntu-latest

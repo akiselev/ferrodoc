@@ -9,7 +9,9 @@ The phase boundary is deliberate:
   [`FDX1_SCOPED_EXECUTION.md`](FDX1_SCOPED_EXECUTION.md).
 - FP2 produces cheap surveys and full-document baseline states with honest native geometry in
   [`FDX2_BASELINE_GEOMETRY.md`](FDX2_BASELINE_GEOMETRY.md).
-- FP3 will add targeted structure/precision engines.
+- FP3 adds the bounded targeted-table structure slice in
+  [`FDX3_TARGETED_TABLES.md`](FDX3_TARGETED_TABLES.md); formula, figure, and finer-geometry
+  specialists remain later work.
 - FP4 will persist/cache deltas and checkpoints and benchmark replay.
 
 FP0/FDX0 does not define electronics predicates, quantities, regimes, training policy, Artifactum storage, or a corpus scheduler. Those remain owned by Datasheet-cli and Foundry.

@@ -6,12 +6,15 @@ use ferrodoc_core::{
     ArtifactId, Capability, DocumentStateId, LayerId, PageId, RequestId, ScopedBlob, Sha256Digest,
     Stage,
 };
-use ferrodoc_engine_api::{Engine, EngineCandidate, EngineRequest, HardwareInventory};
+use ferrodoc_engine_api::{
+    Engine, EngineCandidate, EngineRequest, HardwareInventory, SOURCE_TEXT_EVIDENCE_PARAMETER,
+    SourceTextEvidence, evidence_parameters,
+};
 use ferrodoc_ir::{
     CoverageEntry, DOCUMENT_STATE_SCHEMA, DeltaProducer, Document, DocumentStateManifest,
-    EVIDENCE_DELTA_SCHEMA, EvidenceDelta, LayerOwner, MaterializedIrCheckpoint, OwnedSourceLayer,
-    PageDelta, RefinementScope, RegionEvidenceAddition, SourceLayer, SourceLayerKind,
-    materialize_from_checkpoint,
+    EVIDENCE_DELTA_SCHEMA, EvidenceContent, EvidenceDelta, LayerOwner, MaterializedIrCheckpoint,
+    OwnedSourceLayer, PageDelta, RefinementScope, RegionEvidenceAddition, SourceLayer,
+    SourceLayerKind, materialize_from_checkpoint,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -232,6 +235,14 @@ impl EnrichmentRuntime {
                     serde_json::to_value(&scope)
                         .map_err(|error| RuntimeError::InvalidEnrichment(error.to_string()))?,
                 );
+                if capability == Capability::TableRecognize {
+                    let source_text = scope_source_text(&scope, document)?;
+                    parameters.insert(
+                        SOURCE_TEXT_EVIDENCE_PARAMETER.into(),
+                        serde_json::to_value(source_text)
+                            .map_err(|error| RuntimeError::InvalidEnrichment(error.to_string()))?,
+                    );
+                }
                 let semantic_scope = serde_json::to_vec(&scope)
                     .map_err(|error| RuntimeError::InvalidEnrichment(error.to_string()))?;
                 let engine_request = EngineRequest {
@@ -541,6 +552,42 @@ fn scope_page_index(
         .transpose()
 }
 
+fn scope_source_text(
+    scope: &RefinementScope,
+    document: &Document,
+) -> Result<Vec<SourceTextEvidence>, RuntimeError> {
+    let RefinementScope::Regions { regions } = scope else {
+        return Ok(Vec::new());
+    };
+    let target = regions
+        .iter()
+        .next()
+        .ok_or_else(|| RuntimeError::InvalidEnrichment("region scope is empty".into()))?;
+    let page = document
+        .pages
+        .iter()
+        .find(|page| page.id == target.page_id)
+        .ok_or_else(|| RuntimeError::InvalidEnrichment("scope page is absent".into()))?;
+    let region = page
+        .regions
+        .iter()
+        .find(|region| region.id == target.region_id)
+        .ok_or_else(|| RuntimeError::InvalidEnrichment("scope region is absent".into()))?;
+    Ok(region
+        .evidence
+        .iter()
+        .filter_map(|evidence| match &evidence.content {
+            EvidenceContent::Text { text } => Some(SourceTextEvidence {
+                evidence_id: evidence.id.clone(),
+                text: text.clone(),
+                geometry: evidence.geometry,
+                geometry_quality: evidence.geometry_quality,
+            }),
+            _ => None,
+        })
+        .collect())
+}
+
 fn coverage_complete(
     coverage: &[CoverageEntry],
     capability: Capability,
@@ -688,7 +735,7 @@ fn delta_from_response(
     evidence: Vec<ferrodoc_ir::Evidence>,
 ) -> Result<EvidenceDelta, RuntimeError> {
     let configuration_digest = Sha256Digest::of_bytes(
-        &serde_json::to_vec(&invocation.request.parameters)
+        &serde_json::to_vec(&evidence_parameters(&invocation.request))
             .map_err(|error| RuntimeError::InvalidEnrichment(error.to_string()))?,
     );
     let model_digests = evidence
@@ -700,7 +747,7 @@ fn delta_from_response(
             || item.provenance.input_digest != manifest.source_pdf_sha256
             || item.provenance.engine_id != engine_id
             || item.provenance.engine_version != engine_version
-            || item.provenance.parameters != invocation.request.parameters
+            || item.provenance.parameters != evidence_parameters(&invocation.request)
             || item.provenance.stage != stage.stage
     }) {
         return Err(RuntimeError::InvalidEnrichment(
@@ -712,6 +759,16 @@ fn delta_from_response(
             "one stage response contains multiple model identities".into(),
         ));
     }
+    if invocation.capability == Capability::TableRecognize
+        && evidence
+            .iter()
+            .any(|item| !matches!(item.content, EvidenceContent::Table { .. }))
+    {
+        return Err(RuntimeError::InvalidEnrichment(
+            "table recognition returned non-table evidence".into(),
+        ));
+    }
+    let mut required_evidence_ids = BTreeSet::new();
     let mut page_additions = Vec::new();
     if !evidence.is_empty() {
         let target = match &invocation.scope {
@@ -729,6 +786,33 @@ fn delta_from_response(
             .iter()
             .find(|page| page.id == target.page_id)
             .expect("validated target page");
+        let region = page
+            .regions
+            .iter()
+            .find(|region| region.id == target.region_id)
+            .expect("validated target region");
+        let target_text_ids = region
+            .evidence
+            .iter()
+            .filter_map(|item| {
+                matches!(item.content, EvidenceContent::Text { .. }).then_some(&item.id)
+            })
+            .collect::<BTreeSet<_>>();
+        for span in evidence.iter().flat_map(|item| match &item.content {
+            EvidenceContent::Table { cells, .. } => cells
+                .iter()
+                .flat_map(|cell| &cell.source_spans)
+                .collect::<Vec<_>>(),
+            _ => Vec::new(),
+        }) {
+            if !target_text_ids.contains(&span.evidence_id) {
+                return Err(RuntimeError::InvalidEnrichment(
+                    "table cell source span does not reference text in its qualified target region"
+                        .into(),
+                ));
+            }
+            required_evidence_ids.insert(span.evidence_id.clone());
+        }
         if evidence.iter().any(|item| {
             item.geometry
                 .as_ref()
@@ -800,7 +884,7 @@ fn delta_from_response(
         },
         scope: invocation.scope.clone(),
         input_state_id: Some(manifest.id()?),
-        required_evidence_ids: BTreeSet::new(),
+        required_evidence_ids,
         new_pages: Vec::new(),
         page_additions,
         selection_hints: Vec::new(),

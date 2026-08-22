@@ -1,0 +1,17 @@
+{
+  "grammar": "nonempty_pipe_rows_v1",
+  "source_text": "Pin | Name | Voltage\n1 | VCC | 3.3 V\n2 | GND | 0 V",
+  "rows": 3,
+  "columns": 3,
+  "cells": [
+    { "row": 0, "column": 0, "text": "Pin", "start": 0, "end": 3 },
+    { "row": 0, "column": 1, "text": "Name", "start": 6, "end": 10 },
+    { "row": 0, "column": 2, "text": "Voltage", "start": 13, "end": 20 },
+    { "row": 1, "column": 0, "text": "1", "start": 21, "end": 22 },
+    { "row": 1, "column": 1, "text": "VCC", "start": 25, "end": 28 },
+    { "row": 1, "column": 2, "text": "3.3 V", "start": 31, "end": 36 },
+    { "row": 2, "column": 0, "text": "2", "start": 37, "end": 38 },
+    { "row": 2, "column": 1, "text": "GND", "start": 41, "end": 44 },
+    { "row": 2, "column": 2, "text": "0 V", "start": 47, "end": 50 }
+  ]
+}
