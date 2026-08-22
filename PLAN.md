@@ -1137,6 +1137,10 @@ Ferrodoc v0.2 is ready only when all of the following are true:
 
 These items are candidates only after v0.2 release criteria are met:
 
+The competitive scope, measured gaps, parity gates, and implementation sequence
+against the pinned Marker v2 reference are recorded in
+[`docs/marker-parity.md`](docs/marker-parity.md).
+
 - OAR classic and document-VLM engines;
 - generic ONNX Runtime engine packs;
 - Burn-native models;
