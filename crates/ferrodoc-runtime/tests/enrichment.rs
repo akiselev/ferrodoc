@@ -18,9 +18,11 @@ use ferrodoc_engine_api::{
 use ferrodoc_ir::{
     DOCUMENT_STATE_SCHEMA, Document, DocumentMetadata, DocumentStateManifest, Evidence,
     EvidenceContent, GeometryQuality, Page, PageRegionRef, RefinementScope, Region, RegionKind,
+    materialize_from_checkpoint, materialize_state,
 };
 use ferrodoc_runtime::{
-    ConversionOptions, RuntimeError,
+    CacheDecision, ConversionOptions, RuntimeError,
+    durable::{DurableError, DurableStateStore, ReferenceCheckpointPolicy},
     enrichment::{
         CapabilityGoal, EnrichmentPlanningOutcome, EnrichmentRequest, EnrichmentRuntime,
         EnrichmentStageDescriptor,
@@ -269,6 +271,7 @@ fn fixture_runtime(calls: Arc<Mutex<Vec<EngineRequest>>>) -> EnrichmentRuntime {
                 id: "table.structure".into(),
                 stage: Stage::Layout,
                 build: Sha256Digest::of_bytes(b"scoped-table-build-v1"),
+                model_digest: None,
                 produces: Capability::TableRecognize,
                 requires: BTreeSet::new(),
             },
@@ -401,6 +404,7 @@ fn table_capability_rejects_non_table_engine_evidence() {
                 id: "table.wrong-content".into(),
                 stage: Stage::Layout,
                 build: Sha256Digest::of_bytes(b"wrong-table-content"),
+                model_digest: None,
                 produces: Capability::TableRecognize,
                 requires: BTreeSet::new(),
             },
@@ -434,6 +438,7 @@ fn declared_prerequisite_is_not_implicitly_executed() {
                 id: "table.needs-layout".into(),
                 stage: Stage::Layout,
                 build: Sha256Digest::of_bytes(b"scoped-table-build-v1"),
+                model_digest: None,
                 produces: Capability::TableRecognize,
                 requires: BTreeSet::from([Capability::LayoutDetect]),
             },
@@ -496,6 +501,7 @@ fn candidate_plans_remove_a_provably_dominated_alternative() {
                     id: stage_id.into(),
                     stage: Stage::Layout,
                     build: Sha256Digest::of_bytes(engine_id.as_bytes()),
+                    model_digest: None,
                     produces: Capability::TableRecognize,
                     requires: BTreeSet::new(),
                 },
@@ -510,4 +516,247 @@ fn candidate_plans_remove_a_provably_dominated_alternative() {
     };
     assert_eq!(pareto.len(), 1);
     assert_eq!(pareto[0].invocations[0].engine_id, "fast-table");
+}
+
+#[test]
+fn durable_cold_warm_reuse_and_checkpoint_tail_replay_are_canonical() {
+    let durable_root = tempfile::tempdir().unwrap();
+    let (bytes, initial, initial_manifest, targets) = fixture();
+    let first_request = request(
+        &bytes,
+        &initial_manifest,
+        BTreeSet::from([targets[0].clone()]),
+    );
+    let cold_calls = Arc::new(Mutex::new(Vec::new()));
+    let mut cold = fixture_runtime(cold_calls.clone())
+        .with_durable_store(DurableStateStore::open(durable_root.path()).unwrap());
+    let first_plan = match cold
+        .plan(&first_request, &initial, &initial_manifest)
+        .unwrap()
+    {
+        EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
+        outcome => panic!("unexpected plan: {outcome:?}"),
+    };
+    let first = cold
+        .execute(
+            &first_request,
+            &first_plan,
+            bytes.clone(),
+            &initial,
+            &initial_manifest,
+        )
+        .unwrap();
+    assert_eq!(cold_calls.lock().unwrap().len(), 1);
+    assert_eq!(first.durable_reuse[0].cache, CacheDecision::Miss);
+    let first_artifacts = first.durable_artifacts.clone().unwrap();
+    let storage = first_artifacts.summarize(bytes.len() as u64, first.document.pages.len() as u32);
+    assert!(storage.delta_bytes > 0);
+    assert!(storage.state_manifest_bytes > 0);
+    assert_eq!(
+        storage.checkpoint_bytes,
+        first_artifacts.checkpoint.as_ref().map(|item| item.bytes)
+    );
+    assert!(storage.incremental_to_pdf_ratio.unwrap().is_finite());
+
+    // A separately constructed worker shares only the durable root and does not execute its engine.
+    let warm_calls = Arc::new(Mutex::new(Vec::new()));
+    let mut warm = fixture_runtime(warm_calls.clone())
+        .with_durable_store(DurableStateStore::open(durable_root.path()).unwrap());
+    let warm_plan = match warm
+        .plan(&first_request, &initial, &initial_manifest)
+        .unwrap()
+    {
+        EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
+        outcome => panic!("unexpected plan: {outcome:?}"),
+    };
+    let reused = warm
+        .execute(
+            &first_request,
+            &warm_plan,
+            bytes.clone(),
+            &initial,
+            &initial_manifest,
+        )
+        .unwrap();
+    assert!(warm_calls.lock().unwrap().is_empty());
+    assert_eq!(reused.durable_reuse[0].cache, CacheDecision::Hit);
+    assert_eq!(first.deltas, reused.deltas);
+    assert_eq!(first.state_manifest, reused.state_manifest);
+    assert_eq!(first.document, reused.document);
+    assert_eq!(first.durable_artifacts, reused.durable_artifacts);
+
+    let store = DurableStateStore::open(durable_root.path()).unwrap();
+    let loaded_first_manifest = store
+        .load_manifest(&first_artifacts.state_manifest)
+        .unwrap();
+    let first_checkpoint_ref = first_artifacts.checkpoint.as_ref().unwrap();
+    let loaded_first_checkpoint = store.load_checkpoint(first_checkpoint_ref).unwrap();
+    let loaded_first_delta = store.load_delta(&first_artifacts.deltas[0]).unwrap();
+    assert_eq!(loaded_first_manifest, first.state_manifest);
+    assert_eq!(loaded_first_checkpoint, first.document);
+    assert_eq!(loaded_first_delta, first.deltas[0]);
+
+    // Produce a later independent state, retaining the first state's durable anchor.
+    let later_request = request(
+        &bytes,
+        &first.state_manifest,
+        BTreeSet::from([targets[1].clone()]),
+    );
+    let later_plan = match cold
+        .plan(&later_request, &first.document, &first.state_manifest)
+        .unwrap()
+    {
+        EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
+        outcome => panic!("unexpected plan: {outcome:?}"),
+    };
+    let later = cold
+        .execute(
+            &later_request,
+            &later_plan,
+            bytes,
+            &first.document,
+            &first.state_manifest,
+        )
+        .unwrap();
+    let full = materialize_state(
+        &initial,
+        &[first.deltas[0].clone(), later.deltas[0].clone()],
+        &later.state_manifest,
+    )
+    .unwrap();
+    let checkpoint_tail = materialize_from_checkpoint(
+        &loaded_first_checkpoint,
+        &loaded_first_manifest,
+        &later.deltas,
+        &later.state_manifest,
+    )
+    .unwrap();
+    assert_eq!(
+        full.to_canonical_json().unwrap(),
+        checkpoint_tail.to_canonical_json().unwrap()
+    );
+    assert_eq!(
+        full.to_canonical_json().unwrap(),
+        later.document.to_canonical_json().unwrap()
+    );
+
+    // The old state/evidence anchor remains independently loadable after the newer state exists.
+    let old_again = store.load_checkpoint(first_checkpoint_ref).unwrap();
+    let old_evidence_id = first.deltas[0].page_additions[0].region_evidence[0].evidence[0]
+        .id
+        .clone();
+    assert!(
+        old_again
+            .pages
+            .iter()
+            .flat_map(|page| &page.regions)
+            .flat_map(|region| &region.evidence)
+            .any(|item| item.id == old_evidence_id)
+    );
+    assert!(
+        later
+            .document
+            .pages
+            .iter()
+            .flat_map(|page| &page.regions)
+            .flat_map(|region| &region.evidence)
+            .any(|item| item.id == old_evidence_id)
+    );
+}
+
+#[test]
+fn checkpoint_policy_can_retain_only_deltas_and_manifest() {
+    let durable_root = tempfile::tempdir().unwrap();
+    let (bytes, document, manifest, targets) = fixture();
+    let request = request(&bytes, &manifest, BTreeSet::from([targets[0].clone()]));
+    let mut runtime = fixture_runtime(Arc::new(Mutex::new(Vec::new())))
+        .with_durable_store(DurableStateStore::open(durable_root.path()).unwrap())
+        .with_checkpoint_policy(Arc::new(ReferenceCheckpointPolicy::Never));
+    let plan = match runtime.plan(&request, &document, &manifest).unwrap() {
+        EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
+        outcome => panic!("unexpected plan: {outcome:?}"),
+    };
+    let result = runtime
+        .execute(&request, &plan, bytes, &document, &manifest)
+        .unwrap();
+    let artifacts = result.durable_artifacts.unwrap();
+    assert!(result.state_manifest.materialized_ir_checkpoint.is_none());
+    assert!(artifacts.checkpoint.is_none());
+    assert_eq!(
+        materialize_state(&document, &result.deltas, &result.state_manifest)
+            .unwrap()
+            .to_canonical_json()
+            .unwrap(),
+        result.document.to_canonical_json().unwrap()
+    );
+}
+
+#[test]
+fn durable_physical_realizations_are_nonsemantic_and_fail_closed() {
+    let durable_root = tempfile::tempdir().unwrap();
+    let (bytes, document, manifest, targets) = fixture();
+    let request = request(&bytes, &manifest, BTreeSet::from([targets[0].clone()]));
+    let mut runtime = fixture_runtime(Arc::new(Mutex::new(Vec::new())))
+        .with_durable_store(DurableStateStore::open(durable_root.path()).unwrap());
+    let plan = match runtime.plan(&request, &document, &manifest).unwrap() {
+        EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
+        outcome => panic!("unexpected plan: {outcome:?}"),
+    };
+    let execution = runtime
+        .execute(&request, &plan, bytes, &document, &manifest)
+        .unwrap();
+    let artifacts = execution.durable_artifacts.unwrap();
+    let store = DurableStateStore::open(durable_root.path()).unwrap();
+
+    let mut alternate = execution.state_manifest.clone();
+    alternate
+        .materialized_ir_checkpoint
+        .as_mut()
+        .unwrap()
+        .representation =
+        "application/vnd.ferrodoc.document-ir+json;version=1;storage=alternate".into();
+    let alternate_ref = store.persist_manifest(&alternate).unwrap();
+    assert_eq!(
+        alternate.id().unwrap(),
+        execution.state_manifest.id().unwrap()
+    );
+    assert_ne!(
+        alternate_ref.artifact_id,
+        artifacts.state_manifest.artifact_id
+    );
+
+    let empty = tempfile::tempdir().unwrap();
+    assert!(matches!(
+        DurableStateStore::open(empty.path())
+            .unwrap()
+            .load_checkpoint(artifacts.checkpoint.as_ref().unwrap()),
+        Err(DurableError::Missing { .. })
+    ));
+    let mut stale = artifacts.state_manifest.clone();
+    stale.logical_id = DocumentStateId::derive(&[b"stale-state"]).to_string();
+    assert!(matches!(
+        store.load_manifest(&stale),
+        Err(DurableError::Invalid { .. })
+    ));
+
+    // Locate this checkpoint's content entry through its validated metadata, then corrupt it.
+    let entries = durable_root.path().join("artifacts").join("entries");
+    let checkpoint_value = std::fs::read_dir(entries)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find_map(|directory| {
+            let metadata: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(directory.join("metadata.json")).ok()?)
+                    .ok()?;
+            (metadata["key"]["input_digest"]
+                == serde_json::to_value(artifacts.checkpoint.as_ref().unwrap().bytes_sha256)
+                    .unwrap())
+            .then(|| directory.join("value.bin"))
+        })
+        .unwrap();
+    std::fs::write(checkpoint_value, b"corrupt").unwrap();
+    assert!(matches!(
+        store.load_checkpoint(artifacts.checkpoint.as_ref().unwrap()),
+        Err(DurableError::Cache(_))
+    ));
 }

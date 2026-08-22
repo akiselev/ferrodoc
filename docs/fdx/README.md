@@ -12,7 +12,9 @@ The phase boundary is deliberate:
 - FP3 adds the bounded targeted-table structure slice in
   [`FDX3_TARGETED_TABLES.md`](FDX3_TARGETED_TABLES.md); formula, figure, and finer-geometry
   specialists remain later work.
-- FP4 will persist/cache deltas and checkpoints and benchmark replay.
+- [`FDX4_DURABLE_STATE_REUSE.md`](FDX4_DURABLE_STATE_REUSE.md) defines the implemented runtime
+  provider seam, immutable delta/state/checkpoint persistence, state-aware cross-worker reuse,
+  checkpoint policy hooks, canonical replay equivalence, and exact storage accounting.
 
 FP0/FDX0 does not define electronics predicates, quantities, regimes, training policy, Artifactum storage, or a corpus scheduler. Those remain owned by Datasheet-cli and Foundry.
 

@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+const MAX_METADATA_BYTES: u64 = 1024 * 1024;
+
 /// Every semantic input to a stage cache key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CacheKeyParts {
@@ -143,6 +145,15 @@ impl StageCache {
 
     /// Reads and validates an entry. Absence is a normal cache miss.
     pub fn get(&self, key: &CacheKeyParts) -> Result<Option<CacheHit>, CacheError> {
+        self.get_bounded(key, u64::MAX)
+    }
+
+    /// Reads and validates an entry without allocating beyond a caller-selected value bound.
+    pub fn get_bounded(
+        &self,
+        key: &CacheKeyParts,
+        maximum_bytes: u64,
+    ) -> Result<Option<CacheHit>, CacheError> {
         let digest = key.digest()?;
         let directory = self.entries_dir().join(digest.to_string());
         if !directory.exists() {
@@ -150,10 +161,8 @@ impl StageCache {
         }
         let metadata_path = directory.join("metadata.json");
         let value_path = directory.join("value.bin");
-        let metadata: EntryMetadata = serde_json::from_slice(
-            &fs::read(&metadata_path)
-                .map_err(|source| io_error("read cache metadata", &metadata_path, source))?,
-        )?;
+        let metadata: EntryMetadata =
+            serde_json::from_slice(&read_bounded(&metadata_path, MAX_METADATA_BYTES)?)?;
         if metadata.key != *key {
             return Err(CacheError::Corrupt {
                 path: directory,
@@ -167,6 +176,15 @@ impl StageCache {
             return Err(CacheError::Corrupt {
                 path: value_path,
                 reason: "cache value is not a regular file".into(),
+            });
+        }
+        let value_bytes = fs::metadata(&value_path)
+            .map_err(|source| io_error("inspect cache value", &value_path, source))?
+            .len();
+        if value_bytes != metadata.bytes || value_bytes > maximum_bytes {
+            return Err(CacheError::Corrupt {
+                path: value_path,
+                reason: "cache value size differs from metadata or exceeds its read bound".into(),
             });
         }
         let bytes = fs::read(&value_path)
@@ -236,10 +254,17 @@ impl StageCache {
                     return Err(io_error("publish cache entry", &destination, source));
                 }
             }
-            self.get(key)?.ok_or_else(|| CacheError::Corrupt {
+            let published = self.get(key)?.ok_or_else(|| CacheError::Corrupt {
                 path: destination,
                 reason: "published entry is not visible".into(),
             })?;
+            if published.bytes != bytes {
+                return Err(CacheError::Corrupt {
+                    path: self.entries_dir().join(digest.to_string()),
+                    reason: "concurrent producer published different bytes for one semantic key"
+                        .into(),
+                });
+            }
             Ok(())
         })();
         if result.is_err() && staging.exists() {
@@ -259,6 +284,18 @@ impl StageCache {
     pub(crate) fn root_path_for_error(&self) -> PathBuf {
         self.root.clone()
     }
+}
+
+fn read_bounded(path: &Path, maximum_bytes: u64) -> Result<Vec<u8>, CacheError> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|source| io_error("inspect cache file", path, source))?;
+    if !metadata.file_type().is_file() || metadata.len() > maximum_bytes {
+        return Err(CacheError::Corrupt {
+            path: path.to_owned(),
+            reason: "cache file is not regular or exceeds its read bound".into(),
+        });
+    }
+    fs::read(path).map_err(|source| io_error("read cache file", path, source))
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CacheError> {
@@ -413,5 +450,33 @@ mod tests {
         assert!(!encoded.contains("timestamp"));
         assert!(!encoded.contains("created_at"));
         assert!(!encoded.contains("hostname"));
+    }
+
+    #[test]
+    fn one_semantic_key_refuses_different_immutable_bytes() {
+        let directory = tempfile::tempdir().unwrap();
+        let cache = StageCache::open(directory.path()).unwrap();
+        let key = key(BTreeMap::new());
+        cache
+            .put(
+                &key,
+                &Cacheability::Deterministic,
+                "application/json",
+                b"first",
+            )
+            .unwrap();
+        assert!(matches!(
+            cache.put(
+                &key,
+                &Cacheability::Deterministic,
+                "application/json",
+                b"second"
+            ),
+            Err(CacheError::Corrupt { .. })
+        ));
+        assert!(matches!(
+            cache.get_bounded(&key, 4),
+            Err(CacheError::Corrupt { .. })
+        ));
     }
 }

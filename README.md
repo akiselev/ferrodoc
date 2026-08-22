@@ -60,6 +60,12 @@ hypotheses. It preserves exact source spans and inherits source geometry without
 boxes. This is a deterministic contract oracle, not a claim of general datasheet or scanned-table
 quality; see [FDX3 targeted tables](docs/fdx/FDX3_TARGETED_TABLES.md).
 
+FP4 adds a runtime-owned durable storage-provider seam for immutable deltas, retained state
+manifests, and optional canonical DocumentIR checkpoints. Deterministic refinement reuse is pinned
+to the source, input state, producer/build, scope/config, schema, and seed; physical storage choices
+remain outside logical state identity. See
+[FDX4 durable state reuse](docs/fdx/FDX4_DURABLE_STATE_REUSE.md).
+
 The deterministic foundry, real regression corpus, evaluator contracts, metrics, measurement evidence, held-out rules, and Pareto comparison workflow are described in [Benchmarking and corpus governance](docs/benchmarking.md). The default benchmark smoke is offline and explicitly verifies that missing work scores as failure rather than success.
 
 The router and experiment commands are offline. `router train` writes a model only after re-hashing every conversion trace and benchmark report; its qualification field remains `rejected` unless it beats all declared deterministic baselines on identical held-out cases. `research run` reads immutable reports, re-hashes protected truth and evaluator files before and after scoring, observes cumulative budgets, and atomically writes resumable ledger state.

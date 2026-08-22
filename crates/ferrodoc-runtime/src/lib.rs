@@ -33,6 +33,7 @@ use thiserror::Error;
 
 pub mod cache;
 pub mod doctor;
+pub mod durable;
 pub mod enrichment;
 pub mod hardware;
 pub mod model_store;
@@ -77,6 +78,9 @@ pub enum RuntimeError {
     /// Stage cache failed verification or I/O.
     #[error(transparent)]
     Cache(#[from] cache::CacheError),
+    /// Durable artifact persistence or reuse failed verification.
+    #[error(transparent)]
+    Durable(#[from] durable::DurableError),
     /// Scheduler admission or observation failed.
     #[error(transparent)]
     Scheduler(#[from] scheduler::SchedulerError),

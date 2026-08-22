@@ -20,6 +20,11 @@ FP0/FDX0 adds immutable `EvidenceDelta` and `DocumentStateManifest` contracts al
 
 `materialize_state` and `materialize_from_checkpoint` produce the same canonical DocumentIR for an equivalent logical state. Region refinement always uses `(page_id, region_id)` because region IDs are page-local. The full contract and phase boundary are documented in [`fdx/FDX0_EVIDENCE_GRADE_IR.md`](fdx/FDX0_EVIDENCE_GRADE_IR.md).
 
+FP4 persists these same canonical contracts through a replaceable runtime storage-provider seam.
+Physical delta, retained-manifest, and checkpoint realizations are validated separately from their
+logical IDs; deterministic refinement reuse is pinned to the exact input state and producer
+identity. See [`fdx/FDX4_DURABLE_STATE_REUSE.md`](fdx/FDX4_DURABLE_STATE_REUSE.md).
+
 ## Versioning
 
 Persistent documents contain `{major, minor}` schema versions. A different major version requires migration or a matching reader. Higher minor versions may add fields; serde readers ignore unknown fields within the same major version. Unknown enum-like producer data belongs in the explicit `Unknown` variants because adding a new closed enum tag is not backward compatible.

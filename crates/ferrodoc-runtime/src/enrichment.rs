@@ -1,6 +1,9 @@
 //! Capability-scoped progressive execution over immutable document states.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use ferrodoc_core::{
     ArtifactId, Capability, DocumentStateId, LayerId, PageId, RequestId, ScopedBlob, Sha256Digest,
@@ -20,8 +23,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ConversionOptions, OneBlob, ResourceExecutionTrace, ResourceRuntime, RuntimeError,
-    cache::StageCache, execute_controlled, planner,
+    CacheDecision, ConversionOptions, OneBlob, ResourceExecutionTrace, ResourceRuntime,
+    RuntimeError, StageExecutionRecord,
+    cache::{Cacheability, StageCache},
+    durable::{
+        CheckpointPolicy, CheckpointPolicyContext, DurableExecutionArtifacts, DurableStateStore,
+        ReferenceCheckpointPolicy, RefinementKeyInput, refinement_key,
+    },
+    execute_controlled, planner,
 };
 
 const MAX_PARETO_PLANS: usize = 64;
@@ -57,6 +66,9 @@ pub struct EnrichmentStageDescriptor {
     pub stage: Stage,
     /// Immutable engine source/build identity written into delta provenance.
     pub build: Sha256Digest,
+    /// Immutable model identity, when this registered stage uses a model.
+    #[serde(default)]
+    pub model_digest: Option<Sha256Digest>,
     /// Capability this stage produces.
     pub produces: Capability,
     /// Capabilities that must already be complete over the same scope.
@@ -119,6 +131,23 @@ pub struct EnrichmentExecution {
     pub document: Document,
     /// Scheduler, cache, and measured-resource observations.
     pub resources: ResourceExecutionTrace,
+    /// Durable physical artifacts, when a durable provider was configured.
+    #[serde(default)]
+    pub durable_artifacts: Option<DurableExecutionArtifacts>,
+    /// State-aware durable reuse observations, kept outside semantic identities.
+    #[serde(default)]
+    pub durable_reuse: Vec<DurableReuseRecord>,
+}
+
+/// One state-aware durable refinement lookup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DurableReuseRecord {
+    /// Registered semantic stage.
+    pub stage: String,
+    /// Complete semantic cache-key digest.
+    pub key_sha256: Sha256Digest,
+    /// Cold execution or verified warm reuse.
+    pub cache: CacheDecision,
 }
 
 struct RegisteredStage {
@@ -132,6 +161,8 @@ pub struct EnrichmentRuntime {
     options: ConversionOptions,
     inventory: HardwareInventory,
     cache: Option<StageCache>,
+    durable: Option<DurableStateStore>,
+    checkpoint_policy: Arc<dyn CheckpointPolicy>,
 }
 
 impl EnrichmentRuntime {
@@ -146,7 +177,21 @@ impl EnrichmentRuntime {
             options,
             inventory,
             cache,
+            durable: None,
+            checkpoint_policy: Arc::new(ReferenceCheckpointPolicy::Always),
         }
+    }
+
+    /// Enables shared durable delta/state/checkpoint persistence and cross-worker reuse.
+    pub fn with_durable_store(mut self, store: DurableStateStore) -> Self {
+        self.durable = Some(store);
+        self
+    }
+
+    /// Selects physical checkpoint placement independently from logical state identity.
+    pub fn with_checkpoint_policy(mut self, policy: Arc<dyn CheckpointPolicy>) -> Self {
+        self.checkpoint_policy = policy;
+        self
     }
 
     /// Registers a semantic stage backed by an embedded or process-transport engine.
@@ -372,6 +417,7 @@ impl EnrichmentRuntime {
             self.cache.clone(),
         )?;
         let mut deltas = Vec::new();
+        let mut durable_reuse = Vec::new();
         for invocation in &plan.invocations {
             let registered = self.stages.get_mut(&invocation.stage_id).ok_or_else(|| {
                 RuntimeError::InvalidEnrichment(format!(
@@ -387,28 +433,106 @@ impl EnrichmentRuntime {
                     "selected invocation differs from the registered stage".into(),
                 ));
             }
-            let response = execute_controlled(
-                registered.engine.as_mut(),
-                invocation.request.clone(),
-                &resolver,
-                planner::ModelAvailability::NotRequired,
-                &registered.descriptor.id,
-                &mut resource_runtime,
-            )?;
-            if response.request_id != invocation.request.request_id {
-                return Err(RuntimeError::InvalidEnrichment(
-                    "engine response has the wrong request identity".into(),
-                ));
-            }
-            deltas.push(delta_from_response(
-                manifest,
-                document,
-                &registered.descriptor,
-                registered.engine.descriptor().id.as_str(),
-                registered.engine.descriptor().version.as_str(),
-                invocation,
-                response.evidence,
-            )?);
+            let descriptor = registered.engine.descriptor().clone();
+            let key_parameters = cache_parameters(&invocation.request);
+            let key = refinement_key(RefinementKeyInput {
+                stage: &registered.descriptor.id,
+                stage_build: registered.descriptor.build,
+                model_digest: registered.descriptor.model_digest,
+                source_pdf_sha256: manifest.source_pdf_sha256,
+                input_state_id: &request.input_state_id,
+                engine_id: &descriptor.id,
+                engine_version: &descriptor.version,
+                schema_version: manifest.ir_schema,
+                parameters: &key_parameters,
+            })?;
+            let cacheability = if descriptor.deterministic {
+                Cacheability::Deterministic
+            } else if let Some(seed) = invocation.request.deterministic_seed {
+                Cacheability::Seeded { seed }
+            } else {
+                Cacheability::Uncacheable {
+                    reason: "engine is nondeterministic and no deterministic seed is present"
+                        .into(),
+                }
+            };
+            let durable_hit = if matches!(cacheability, Cacheability::Uncacheable { .. }) {
+                None
+            } else {
+                self.durable
+                    .as_ref()
+                    .map(|store| store.get_refinement(&key))
+                    .transpose()?
+                    .flatten()
+            };
+            let delta = if let Some(delta) = durable_hit {
+                validate_cached_delta(
+                    &delta,
+                    manifest,
+                    &registered.descriptor,
+                    &descriptor.id,
+                    &descriptor.version,
+                    invocation,
+                )?;
+                resource_runtime.records.push(StageExecutionRecord {
+                    page_index: invocation.request.page_index,
+                    stage: registered.descriptor.id.clone(),
+                    engine_id: invocation.candidate.engine_id.clone(),
+                    device: invocation.candidate.device.clone(),
+                    reservation: None,
+                    cache: CacheDecision::Hit,
+                    measurement: crate::scheduler::LeaseMeasurement::default(),
+                });
+                durable_reuse.push(DurableReuseRecord {
+                    stage: registered.descriptor.id.clone(),
+                    key_sha256: key.digest()?,
+                    cache: CacheDecision::Hit,
+                });
+                delta
+            } else {
+                let response = execute_controlled(
+                    registered.engine.as_mut(),
+                    invocation.request.clone(),
+                    &resolver,
+                    planner::ModelAvailability::NotRequired,
+                    &registered.descriptor.id,
+                    &mut resource_runtime,
+                )?;
+                if response.request_id != invocation.request.request_id {
+                    return Err(RuntimeError::InvalidEnrichment(
+                        "engine response has the wrong request identity".into(),
+                    ));
+                }
+                let delta = delta_from_response(
+                    manifest,
+                    document,
+                    &registered.descriptor,
+                    &descriptor.id,
+                    &descriptor.version,
+                    invocation,
+                    response.evidence,
+                )?;
+                if let Some(store) = &self.durable
+                    && !matches!(cacheability, Cacheability::Uncacheable { .. })
+                {
+                    store.put_refinement(&key, &cacheability, &delta)?;
+                }
+                durable_reuse.push(DurableReuseRecord {
+                    stage: registered.descriptor.id.clone(),
+                    key_sha256: key.digest()?,
+                    cache: if self.durable.is_some() {
+                        if matches!(cacheability, Cacheability::Uncacheable { .. }) {
+                            CacheDecision::Uncacheable
+                        } else {
+                            CacheDecision::Miss
+                        }
+                    } else {
+                        CacheDecision::NotConfigured
+                    },
+                });
+                delta
+            };
+            deltas.push(delta);
         }
 
         let base_state_id = manifest.id()?;
@@ -421,7 +545,8 @@ impl EnrichmentRuntime {
         }
         let materialized =
             materialize_from_checkpoint(document, manifest, &deltas, &state_manifest)?;
-        let checkpoint_digest = Sha256Digest::of_bytes(&materialized.to_canonical_json()?);
+        let checkpoint_bytes = materialized.to_canonical_json()?;
+        let checkpoint_digest = Sha256Digest::of_bytes(&checkpoint_bytes);
         state_manifest.materialized_ir_checkpoint = Some(MaterializedIrCheckpoint {
             document_ir_logical_sha256: checkpoint_digest,
             artifact_id: ArtifactId::derive(&[
@@ -430,6 +555,44 @@ impl EnrichmentRuntime {
             ]),
             representation: "application/vnd.ferrodoc.document-ir+json;version=1".into(),
         });
+        let persist_checkpoint = self.durable.is_none()
+            || self
+                .checkpoint_policy
+                .should_checkpoint(CheckpointPolicyContext {
+                    state_delta_count: state_manifest.evidence_delta_ids.len(),
+                    tail_delta_count: deltas.len(),
+                    canonical_document_bytes: checkpoint_bytes.len() as u64,
+                });
+        if !persist_checkpoint {
+            state_manifest.materialized_ir_checkpoint = None;
+        }
+        let durable_artifacts = self
+            .durable
+            .as_ref()
+            .map(|store| {
+                let checkpoint = persist_checkpoint
+                    .then(|| store.persist_checkpoint(&materialized))
+                    .transpose()?;
+                state_manifest.materialized_ir_checkpoint =
+                    checkpoint
+                        .as_ref()
+                        .map(|checkpoint| MaterializedIrCheckpoint {
+                            document_ir_logical_sha256: checkpoint_digest,
+                            artifact_id: checkpoint.artifact_id.clone(),
+                            representation: checkpoint.representation.clone(),
+                        });
+                let deltas = deltas
+                    .iter()
+                    .map(|delta| store.persist_delta(delta))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let state_manifest_artifact = store.persist_manifest(&state_manifest)?;
+                Ok::<_, crate::durable::DurableError>(DurableExecutionArtifacts {
+                    deltas,
+                    state_manifest: state_manifest_artifact,
+                    checkpoint,
+                })
+            })
+            .transpose()?;
         Ok(EnrichmentExecution {
             deltas,
             state_manifest,
@@ -437,8 +600,55 @@ impl EnrichmentRuntime {
             resources: ResourceExecutionTrace {
                 stages: resource_runtime.records,
             },
+            durable_artifacts,
+            durable_reuse,
         })
     }
+}
+
+fn cache_parameters(request: &EngineRequest) -> BTreeMap<String, serde_json::Value> {
+    let mut parameters = request.parameters.clone();
+    if let Some(page_index) = request.page_index {
+        parameters.insert("ferrodoc.page_index".into(), serde_json::json!(page_index));
+    }
+    if let Some(seed) = request.deterministic_seed {
+        parameters.insert(
+            "ferrodoc.deterministic_seed".into(),
+            serde_json::json!(seed),
+        );
+    }
+    parameters
+}
+
+fn validate_cached_delta(
+    delta: &EvidenceDelta,
+    manifest: &DocumentStateManifest,
+    stage: &EnrichmentStageDescriptor,
+    engine_id: &str,
+    engine_version: &str,
+    invocation: &EnrichmentInvocation,
+) -> Result<(), RuntimeError> {
+    let configuration_digest = Sha256Digest::of_bytes(
+        &serde_json::to_vec(&evidence_parameters(&invocation.request))
+            .map_err(|error| RuntimeError::InvalidEnrichment(error.to_string()))?,
+    );
+    if delta.source_pdf_sha256 != manifest.source_pdf_sha256
+        || delta.ir_schema != manifest.ir_schema
+        || delta.input_state_id.as_ref() != Some(&manifest.id()?)
+        || delta.stage != stage.stage
+        || delta.scope != invocation.scope
+        || delta.producer.name != engine_id
+        || delta.producer.version != engine_version
+        || delta.producer.build != stage.build
+        || delta.producer.model_digest != stage.model_digest
+        || delta.producer.configuration_digest != configuration_digest
+    {
+        return Err(RuntimeError::InvalidEnrichment(
+            "durable cached delta differs from the pinned source/state/stage/scope/producer".into(),
+        ));
+    }
+    delta.to_canonical_json()?;
+    Ok(())
 }
 
 fn validate_request(
@@ -738,10 +948,6 @@ fn delta_from_response(
         &serde_json::to_vec(&evidence_parameters(&invocation.request))
             .map_err(|error| RuntimeError::InvalidEnrichment(error.to_string()))?,
     );
-    let model_digests = evidence
-        .iter()
-        .filter_map(|item| item.provenance.model_digest)
-        .collect::<BTreeSet<_>>();
     if evidence.iter().any(|item| {
         item.provenance.schema_version != manifest.ir_schema
             || item.provenance.input_digest != manifest.source_pdf_sha256
@@ -749,14 +955,10 @@ fn delta_from_response(
             || item.provenance.engine_version != engine_version
             || item.provenance.parameters != evidence_parameters(&invocation.request)
             || item.provenance.stage != stage.stage
+            || item.provenance.model_digest != stage.model_digest
     }) {
         return Err(RuntimeError::InvalidEnrichment(
             "engine evidence provenance differs from the scoped invocation".into(),
-        ));
-    }
-    if model_digests.len() > 1 {
-        return Err(RuntimeError::InvalidEnrichment(
-            "one stage response contains multiple model identities".into(),
         ));
     }
     if invocation.capability == Capability::TableRecognize
@@ -879,7 +1081,7 @@ fn delta_from_response(
             name: engine_id.into(),
             version: engine_version.into(),
             build: stage.build,
-            model_digest: model_digests.into_iter().next(),
+            model_digest: stage.model_digest,
             configuration_digest,
         },
         scope: invocation.scope.clone(),
