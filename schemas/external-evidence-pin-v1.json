@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExternalEvidencePin",
+  "description": "Minimal generic handoff from document enrichment to an external semantic extractor.\n\nThe pin deliberately contains logical identities only. Cache locations, checkpoint placement, process IDs, timestamps, and other physical realization details cannot alter or leak into this contract.",
+  "type": "object",
+  "required": [
+    "document_state_id",
+    "evidence_ids",
+    "schema",
+    "source_pdf_sha256"
+  ],
+  "properties": {
+    "document_state_id": {
+      "description": "Logical document state interpreted by the external extractor.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/DocumentStateId"
+        }
+      ]
+    },
+    "evidence_ids": {
+      "description": "Exact retained evidence records consumed by the semantic result.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EvidenceId"
+      },
+      "uniqueItems": true
+    },
+    "schema": {
+      "description": "Versioned persistent contract tag.",
+      "type": "string"
+    },
+    "source_pdf_sha256": {
+      "description": "Exact source document digest.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Sha256Digest"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "DocumentStateId": {
+      "type": "string"
+    },
+    "EvidenceId": {
+      "type": "string"
+    },
+    "Sha256Digest": {
+      "type": "string"
+    }
+  }
+}

@@ -151,7 +151,7 @@ jobs:
           cargo run --locked -p ferrodoc --features tesseract -- convert \
             fixtures/pdf/image-only.pdf --ocr-engine tesseract --format markdown \
             --output "$RUNNER_TEMP/tesseract.md"
-          test "$(cat "$RUNNER_TEMP/tesseract.md")" = $'SCANNED FERRODOC PAGE\nOptical text survives the CPU path.'
+          test "$(cat "$RUNNER_TEMP/tesseract.md")" = $'# SCANNED FERRODOC PAGE\n\nOptical text survives the CPU path.'
       - name: Qualify Tesseract portfolio on fixed real corpus
         env:
           FERRODOC_TEST_TESSERACT: "1"

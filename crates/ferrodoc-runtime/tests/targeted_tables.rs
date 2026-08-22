@@ -66,6 +66,10 @@ fn targeted_table_refinement_retains_old_hypothesis_and_leaves_other_page_unchan
     let region = &result.document.pages[0].regions[0];
     assert_eq!(region.evidence.len(), 2);
     assert_eq!(region.evidence[0].id, source_evidence_id);
+    assert_eq!(
+        region.selected.as_ref().unwrap().evidence_ids,
+        vec![region.evidence[1].id.clone()]
+    );
     let EvidenceContent::Table { cells, .. } = &region.evidence[1].content else {
         panic!("expected appended table hypothesis")
     };

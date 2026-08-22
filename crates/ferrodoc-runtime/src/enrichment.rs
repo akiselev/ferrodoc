@@ -16,8 +16,8 @@ use ferrodoc_engine_api::{
 use ferrodoc_ir::{
     CoverageEntry, DOCUMENT_STATE_SCHEMA, DeltaProducer, Document, DocumentStateManifest,
     EVIDENCE_DELTA_SCHEMA, EvidenceContent, EvidenceDelta, LayerOwner, MaterializedIrCheckpoint,
-    OwnedSourceLayer, PageDelta, RefinementScope, RegionEvidenceAddition, SourceLayer,
-    SourceLayerKind, materialize_from_checkpoint,
+    OwnedSourceLayer, PageDelta, RefinementScope, RegionEvidenceAddition, SelectedView,
+    SelectionHint, SelectionReason, SourceLayer, SourceLayerKind, materialize_from_checkpoint,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -1613,6 +1613,7 @@ fn delta_from_response(
     }
     let mut required_evidence_ids = BTreeSet::new();
     let mut page_additions = Vec::new();
+    let mut selection_hints = Vec::new();
     if !evidence.is_empty() {
         let target = match &invocation.scope {
             RefinementScope::Regions { regions } if regions.len() == 1 => {
@@ -1689,6 +1690,17 @@ fn delta_from_response(
                 }
             }
         }
+        if invocation.capability == Capability::TableRecognize {
+            selection_hints.push(SelectionHint {
+                region: target.clone(),
+                selected: SelectedView {
+                    evidence_ids: evidence.iter().map(|item| item.id.clone()).collect(),
+                    reason: SelectionReason::Reconciled,
+                    explanation: "selected targeted table structure over the retained text hypothesis"
+                        .into(),
+                },
+            });
+        }
         page_additions.push(PageDelta {
             page_id: target.page_id.clone(),
             source_layers: new_layers
@@ -1730,7 +1742,7 @@ fn delta_from_response(
         required_evidence_ids,
         new_pages: Vec::new(),
         page_additions,
-        selection_hints: Vec::new(),
+        selection_hints,
         diagnostics: Vec::new(),
         coverage_delta: vec![CoverageEntry {
             capability: invocation.capability,

@@ -324,6 +324,63 @@ pub struct BaselineSummary {
     pub evidence_bytes_per_page: f64,
 }
 
+/// Stable cross-repository tag for an external semantic extractor's evidence pin.
+pub const EXTERNAL_EVIDENCE_PIN_SCHEMA: &str = "ferrodoc-external-evidence-pin/1";
+
+/// Minimal generic handoff from document enrichment to an external semantic extractor.
+///
+/// The pin deliberately contains logical identities only. Cache locations, checkpoint
+/// placement, process IDs, timestamps, and other physical realization details cannot
+/// alter or leak into this contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ExternalEvidencePin {
+    /// Versioned persistent contract tag.
+    pub schema: String,
+    /// Exact source document digest.
+    pub source_pdf_sha256: Sha256Digest,
+    /// Logical document state interpreted by the external extractor.
+    pub document_state_id: ferrodoc_core::DocumentStateId,
+    /// Exact retained evidence records consumed by the semantic result.
+    pub evidence_ids: BTreeSet<EvidenceId>,
+}
+
+impl ExternalEvidencePin {
+    /// Validates that this pin names the supplied state and resolvable evidence.
+    pub fn validate(
+        &self,
+        manifest: &DocumentStateManifest,
+        document: &Document,
+    ) -> Result<(), RuntimeError> {
+        if self.schema != EXTERNAL_EVIDENCE_PIN_SCHEMA {
+            return Err(RuntimeError::InvalidEnrichment(
+                "external evidence pin has an unsupported schema".into(),
+            ));
+        }
+        if self.source_pdf_sha256 != document.input_digest
+            || self.source_pdf_sha256 != manifest.source_pdf_sha256
+            || self.document_state_id != manifest.id()?
+            || self.evidence_ids.is_empty()
+        {
+            return Err(RuntimeError::InvalidEnrichment(
+                "external evidence pin differs from the materialized state".into(),
+            ));
+        }
+        let available = document
+            .pages
+            .iter()
+            .flat_map(|page| &page.regions)
+            .flat_map(|region| &region.evidence)
+            .map(|evidence| evidence.id.clone())
+            .collect::<BTreeSet<_>>();
+        if !self.evidence_ids.is_subset(&available) {
+            return Err(RuntimeError::InvalidEnrichment(
+                "external evidence pin contains an unresolved evidence identity".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Cache outcome for one expensive stage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -773,7 +830,7 @@ impl Converter {
 
 fn baseline_state(
     survey: PdfSurvey,
-    conversion: ConversionResult,
+    mut conversion: ConversionResult,
     options: &ConversionOptions,
 ) -> Result<BaselineResult, RuntimeError> {
     let document = &conversion.document;
@@ -912,9 +969,9 @@ fn baseline_state(
         metadata: document.metadata.clone(),
         pages: Vec::new(),
     };
-    let checkpoint_json =
-        ferrodoc_ir::materialize_state(&initial, std::slice::from_ref(&delta), &manifest)?
-            .to_canonical_json()?;
+    let materialized =
+        ferrodoc_ir::materialize_state(&initial, std::slice::from_ref(&delta), &manifest)?;
+    let checkpoint_json = materialized.to_canonical_json()?;
     let checkpoint_digest = Sha256Digest::of_bytes(&checkpoint_json);
     manifest.materialized_ir_checkpoint = Some(MaterializedIrCheckpoint {
         document_ir_logical_sha256: checkpoint_digest,
@@ -989,6 +1046,10 @@ fn baseline_state(
             evidence_bytes as f64 / f64::from(pages)
         },
     };
+    // The baseline result is itself a state handoff. Return the same canonical
+    // materialization whose bytes are bound by the manifest, not the pre-state
+    // orchestration ordering retained in the conversion trace.
+    conversion.document = materialized;
     Ok(BaselineResult {
         survey,
         conversion,
@@ -1555,6 +1616,10 @@ fn reconcile_page(
                 EvidenceContent::Text { text } if text.contains(native_text)
             )
         });
+    // When native text is absent, this layout response was derived from the OCR text immediately
+    // above. Its region-scoped records are the selected view; the full-page OCR record remains as
+    // source evidence but selecting it as well would duplicate every layout region after the first.
+    let layout_from_ocr = native_text.is_empty() && !layout_evidence.is_empty();
     let mut regions: Vec<_> = layout_evidence
         .into_iter()
         .enumerate()
@@ -1577,8 +1642,17 @@ fn reconcile_page(
                 geometry,
                 selected: Some(SelectedView {
                     evidence_ids: vec![item.id.clone()],
-                    reason: SelectionReason::Reconciled,
-                    explanation: "coarse layout text retained in deterministic source order".into(),
+                    reason: if native_text.is_empty() {
+                        SelectionReason::NativeAbsent
+                    } else {
+                        SelectionReason::Reconciled
+                    },
+                    explanation: if native_text.is_empty() {
+                        "coarse layout derived from OCR and retained in deterministic source order"
+                            .into()
+                    } else {
+                        "coarse layout text retained in deterministic source order".into()
+                    },
                 }),
                 evidence: vec![item],
             }
@@ -1605,7 +1679,9 @@ fn reconcile_page(
         }
         first.evidence.push(native);
     }
-    selected_ids.extend(ocr_evidence.iter().map(|item| item.id.clone()));
+    if !layout_from_ocr {
+        selected_ids.extend(ocr_evidence.iter().map(|item| item.id.clone()));
+    }
     first.evidence.extend(ocr_evidence);
     if !selected_ids.is_empty() {
         first.selected = Some(SelectedView {
@@ -1807,7 +1883,18 @@ mod tests {
     use ferrodoc_engine_api::{
         EngineCandidate, EngineCompatibility, HardwareInventory, HealthStatus, NetworkUse,
     };
-    use ferrodoc_ir::{GeometryQuality, materialize_state};
+    use ferrodoc_ir::{
+        GeometryQuality, PageRegionRef, materialize_from_checkpoint, materialize_state,
+    };
+    use ferrodoc_table_rulebased::RuleBasedTableEngine;
+
+    use crate::{
+        durable::DurableStateStore,
+        enrichment::{
+            CapabilityGoal, EnrichmentPlanningOutcome, EnrichmentRequest, EnrichmentRuntime,
+            EnrichmentStageDescriptor,
+        },
+    };
 
     use super::*;
 
@@ -1819,6 +1906,7 @@ mod tests {
         descriptor: EngineDescriptor,
         pages: Arc<Mutex<Vec<u32>>>,
         model_digest: Sha256Digest,
+        text: Option<String>,
     }
 
     impl BaselineOcr {
@@ -1838,7 +1926,13 @@ mod tests {
                 },
                 pages,
                 model_digest,
+                text: None,
             }
+        }
+
+        fn with_text(mut self, text: impl Into<String>) -> Self {
+            self.text = Some(text.into());
+            self
         }
     }
 
@@ -1905,7 +1999,10 @@ mod tests {
                 provenance.identity_digest().unwrap().as_bytes(),
                 &page_index.to_be_bytes(),
             ]);
-            let text = format!("fixture OCR page {page_index}");
+            let text = self
+                .text
+                .clone()
+                .unwrap_or_else(|| format!("fixture OCR page {page_index}"));
             let evidence = Evidence {
                 id: EvidenceId::derive(&[layer_id.as_str().as_bytes(), text.as_bytes()]),
                 layer_id: layer_id.clone(),
@@ -2170,6 +2267,215 @@ mod tests {
             );
         }
         assert_eq!(*calls.lock().unwrap(), vec![0, 0, 0]);
+    }
+
+    #[test]
+    fn fp6_pdf_baseline_targeted_reuse_and_external_pin_contract() {
+        let bytes = include_bytes!("../../../fixtures/pdf/image-only.pdf").to_vec();
+        let model_digest = Sha256Digest::of_bytes(b"purpose-built-fp6-ocr-fixture");
+        let mut converter = Converter::with_ocr_engine(
+            ConversionOptions::default(),
+            BaselineOcr::new(Arc::new(Mutex::new(Vec::new())), model_digest)
+                .with_text("Pin | Name | Voltage\n1 | VCC | 3.3 V\n2 | GND | 0 V"),
+            ModelId::derive(&[b"fp6-fixture-model"]),
+            Some(model_digest),
+        )
+        .unwrap();
+        let baseline = converter.baseline(bytes.clone()).unwrap();
+        let page = &baseline.conversion.document.pages[0];
+        let region = page
+            .regions
+            .iter()
+            .find(|region| {
+                region.evidence.iter().any(|evidence| {
+                    matches!(&evidence.content, EvidenceContent::Text { text } if text.contains("Pin | Name"))
+                })
+            })
+            .expect("OCR-derived table source region");
+        let target = PageRegionRef {
+            page_id: page.id.clone(),
+            region_id: region.id.clone(),
+        };
+        let old_anchor = region.selected.as_ref().unwrap().evidence_ids[0].clone();
+        let request = EnrichmentRequest {
+            request_id: RequestId::derive(&[b"fp6-targeted-refinement"]),
+            source: ScopedBlob {
+                id: BlobId::new("fp6-source-pdf").unwrap(),
+                range: BlobRange::new(0, bytes.len() as u64).unwrap(),
+                media_type: MediaType::new("application/pdf").unwrap(),
+                expected_digest: Some(Sha256Digest::of_bytes(&bytes)),
+            },
+            input_state_id: baseline.manifest.id().unwrap(),
+            goals: vec![CapabilityGoal {
+                capability: Capability::TableRecognize,
+                scope: RefinementScope::Regions {
+                    regions: BTreeSet::from([target.clone()]),
+                },
+            }],
+        };
+        let durable_root = tempfile::tempdir().unwrap();
+        assert_eq!(
+            Sha256Digest::of_bytes(&baseline.conversion.document.to_canonical_json().unwrap()),
+            baseline
+                .manifest
+                .materialized_ir_checkpoint
+                .as_ref()
+                .unwrap()
+                .document_ir_logical_sha256
+        );
+        let make_runtime = || {
+            let mut runtime = EnrichmentRuntime::new(
+                ConversionOptions::default(),
+                ferrodoc_engine_api::conformance::unknown_inventory(),
+                None,
+            )
+            .with_durable_store(DurableStateStore::open(durable_root.path()).unwrap());
+            runtime
+                .register_stage(
+                    EnrichmentStageDescriptor {
+                        id: "table.structure.rulebased".into(),
+                        stage: Stage::Layout,
+                        build: Sha256Digest::of_bytes(b"table-rulebased-build-v1"),
+                        model_digest: None,
+                        produces: Capability::TableRecognize,
+                        requires: BTreeSet::from([Capability::LayoutDetect]),
+                    },
+                    RuleBasedTableEngine::new(),
+                )
+                .unwrap();
+            runtime
+        };
+        let mut cold = make_runtime();
+        let plan = match cold
+            .plan(&request, &baseline.conversion.document, &baseline.manifest)
+            .unwrap()
+        {
+            EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
+            other => panic!("unexpected FP6 plan: {other:?}"),
+        };
+        assert_eq!(plan.invocations[0].scope, request.goals[0].scope);
+        let refined = cold
+            .execute(
+                &request,
+                &plan,
+                bytes.clone(),
+                &baseline.conversion.document,
+                &baseline.manifest,
+            )
+            .unwrap();
+        let refined_region = refined.document.pages[0]
+            .regions
+            .iter()
+            .find(|region| region.id == target.region_id)
+            .unwrap();
+        assert!(
+            refined_region
+                .evidence
+                .iter()
+                .any(|item| item.id == old_anchor)
+        );
+        let selected = refined_region.selected.as_ref().unwrap();
+        assert!(!selected.evidence_ids.contains(&old_anchor));
+        assert!(selected.evidence_ids.iter().all(|id| {
+            refined_region
+                .evidence
+                .iter()
+                .any(|item| item.id == *id && matches!(item.content, EvidenceContent::Table { .. }))
+        }));
+
+        let initial = Document {
+            schema_version: baseline.conversion.document.schema_version,
+            id: baseline.conversion.document.id.clone(),
+            input_digest: baseline.conversion.document.input_digest,
+            metadata: baseline.conversion.document.metadata.clone(),
+            pages: Vec::new(),
+        };
+        let full = materialize_state(
+            &initial,
+            &[baseline.delta.clone(), refined.deltas[0].clone()],
+            &refined.state_manifest,
+        )
+        .unwrap();
+        let tail = materialize_from_checkpoint(
+            &baseline.conversion.document,
+            &baseline.manifest,
+            &refined.deltas,
+            &refined.state_manifest,
+        )
+        .unwrap();
+        assert_eq!(
+            full.to_canonical_json().unwrap(),
+            tail.to_canonical_json().unwrap()
+        );
+
+        let mut warm = make_runtime();
+        let warm_plan = match warm
+            .plan(&request, &baseline.conversion.document, &baseline.manifest)
+            .unwrap()
+        {
+            EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
+            other => panic!("unexpected warm FP6 plan: {other:?}"),
+        };
+        let reused = warm
+            .execute(
+                &request,
+                &warm_plan,
+                bytes,
+                &baseline.conversion.document,
+                &baseline.manifest,
+            )
+            .unwrap();
+        assert_eq!(reused.durable_reuse[0].cache, CacheDecision::Hit);
+        assert_eq!(
+            reused.document.to_canonical_json().unwrap(),
+            refined.document.to_canonical_json().unwrap()
+        );
+
+        let pin = ExternalEvidencePin {
+            schema: EXTERNAL_EVIDENCE_PIN_SCHEMA.into(),
+            source_pdf_sha256: refined.document.input_digest,
+            document_state_id: refined.state_manifest.id().unwrap(),
+            evidence_ids: BTreeSet::from_iter(
+                std::iter::once(old_anchor).chain(selected.evidence_ids.iter().cloned()),
+            ),
+        };
+        pin.validate(&refined.state_manifest, &refined.document)
+            .unwrap();
+        let mut future = pin.clone();
+        future.schema = "ferrodoc-external-evidence-pin/2".into();
+        assert!(
+            future
+                .validate(&refined.state_manifest, &refined.document)
+                .is_err()
+        );
+        let mut malformed = pin;
+        malformed
+            .evidence_ids
+            .insert(EvidenceId::derive(&[b"absent"]));
+        assert!(
+            malformed
+                .validate(&refined.state_manifest, &refined.document)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn fp6_external_pin_schema_and_fixture_are_byte_stable() {
+        let fixture_bytes = include_bytes!("../../../fixtures/external-evidence-pin-v1.json");
+        let fixture: ExternalEvidencePin = serde_json::from_slice(fixture_bytes).unwrap();
+        let mut encoded = serde_json::to_vec(&fixture).unwrap();
+        encoded.push(b'\n');
+        assert_eq!(encoded, fixture_bytes);
+
+        let mut schema =
+            serde_json::to_vec_pretty(&schemars::schema_for!(ExternalEvidencePin)).unwrap();
+        schema.push(b'\n');
+        assert_eq!(
+            schema,
+            include_bytes!("../../../schemas/external-evidence-pin-v1.json")
+        );
+        assert!(!fixture_bytes.contains(&b'\\'));
+        assert!(!fixture_bytes.windows(2).any(|window| window == b"\r\n"));
     }
 
     #[test]

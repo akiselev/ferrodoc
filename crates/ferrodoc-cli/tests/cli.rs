@@ -138,7 +138,7 @@ fn tesseract_feature_converts_the_scanned_fixture_when_available() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "SCANNED FERRODOC PAGE\nOptical text survives the CPU path.\n"
+        "# SCANNED FERRODOC PAGE\n\nOptical text survives the CPU path.\n"
     );
 }
 

@@ -18,6 +18,9 @@ The phase boundary is deliberate:
 - [`FDX5_EXPLAINABLE_PARETO.md`](FDX5_EXPLAINABLE_PARETO.md) defines hard-admitted local
   alternatives, fixed-point value/quality/cost uncertainty, cache and prerequisite explanations,
   targeted-versus-whole-document escalation, and conservative Pareto retention.
+- [`FDX6_INTEGRATION_VALIDATION.md`](FDX6_INTEGRATION_VALIDATION.md) binds the full portable
+  PDF-to-baseline-to-targeted-refinement flow, durable reuse, selected-view improvement, process
+  parity, and the generic external semantic evidence pin.
 
 FP0/FDX0 does not define electronics predicates, quantities, regimes, training policy, Artifactum storage, or a corpus scheduler. Those remain owned by Datasheet-cli and Foundry.
 
@@ -27,6 +30,8 @@ The conformance schemas and compact golden vectors are:
 - `schemas/document-state-manifest-v1.json`
 - `fixtures/evidence-delta-v1.json`
 - `fixtures/document-state-manifest-v1.json`
+- `schemas/external-evidence-pin-v1.json`
+- `fixtures/external-evidence-pin-v1.json`
 - `schemas/protocol-request-v1.json`
 - `fixtures/protocol/v1/legacy-execute-request.bin`
 - `fixtures/protocol/v1/scoped-execute-request.bin`
@@ -37,4 +42,5 @@ Regenerate them explicitly with:
 cargo run --locked -p ferrodoc-ir --example export_snapshots
 cargo run --locked -p ferrodoc-protocol --example export_fixtures
 cargo run --locked -p ferrodoc-pdf --example export_survey_snapshots
+cargo run --locked -p ferrodoc-runtime --example export_integration_contract
 ```

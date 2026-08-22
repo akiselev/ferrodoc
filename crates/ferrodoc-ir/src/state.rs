@@ -429,9 +429,10 @@ fn materialize_with_prefix(
     }
     let mut represented: BTreeSet<_> = prefix_ids.iter().cloned().collect();
     let mut document = initial.clone();
+    let mut refinement_selections = BTreeMap::<PageRegionRef, SelectedView>::new();
     for delta in deltas {
         represented.insert(delta.id()?);
-        apply_delta(&mut document, delta)?;
+        apply_delta(&mut document, delta, &mut refinement_selections)?;
     }
     if represented != manifest.evidence_delta_ids {
         return Err(IrError::Invalid(
@@ -443,7 +444,11 @@ fn materialize_with_prefix(
     Ok(document)
 }
 
-fn apply_delta(document: &mut Document, delta: &EvidenceDelta) -> Result<(), IrError> {
+fn apply_delta(
+    document: &mut Document,
+    delta: &EvidenceDelta,
+    refinement_selections: &mut BTreeMap<PageRegionRef, SelectedView>,
+) -> Result<(), IrError> {
     delta.validate_envelope()?;
     if delta.source_pdf_sha256 != document.input_digest
         || delta.ir_schema != document.schema_version
@@ -587,15 +592,18 @@ fn apply_delta(document: &mut Document, delta: &EvidenceDelta) -> Result<(), IrE
             .iter_mut()
             .find(|region| region.id == hint.region.region_id)
             .ok_or_else(|| IrError::Invalid("selection-hint region is absent".into()))?;
-        if region
-            .selected
-            .as_ref()
+        // A checkpoint or baseline may carry an older selected view. The first
+        // tail refinement may replace it, while competing refinement deltas are
+        // rejected so materialization order cannot affect the selected view.
+        if refinement_selections
+            .get(&hint.region)
             .is_some_and(|selected| selected != &hint.selected)
         {
             return Err(IrError::Invalid(
                 "conflicting selection hints require a different reconciliation policy".into(),
             ));
         }
+        refinement_selections.insert(hint.region.clone(), hint.selected.clone());
         region.selected = Some(hint.selected.clone());
     }
     Ok(())
