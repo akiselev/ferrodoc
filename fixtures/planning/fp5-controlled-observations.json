@@ -1,0 +1,11 @@
+{
+  "schema": "ferrodoc-controlled-planning-observations/1",
+  "scope": "purpose-built minimized table fixture; not representative corpus evidence",
+  "observations": [
+    {"label": "fast", "truth_items": 10, "correct_items": 8, "quality_bps": 8000},
+    {"label": "slow", "truth_items": 10, "correct_items": 8, "quality_bps": 8000},
+    {"label": "targeted", "truth_items": 10, "correct_items": 8, "quality_bps": 8000},
+    {"label": "whole", "truth_items": 10, "correct_items": 9, "quality_bps": 9000},
+    {"label": "accurate", "truth_items": 20, "correct_items": 19, "quality_bps": 9500}
+  ]
+}

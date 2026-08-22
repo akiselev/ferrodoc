@@ -6,9 +6,9 @@ use std::{
 use ferrodoc_core::{
     BackendId, BlobId, BlobRange, Bytes, CURRENT_SCHEMA_VERSION, Capability, CoordinateSpace,
     CoordinateTransform, DeterministicProvenance, DeviceId, DeviceKind, DocumentId,
-    DocumentStateId, Estimate, EvidenceId, LayerId, MediaType, MicroUsd, Millis, PageId, PageRect,
-    Probability, Profile, Rect, RegionId, RequestId, ResourceEstimate, ScopedBlob, Sha256Digest,
-    Stage, Unit,
+    DocumentStateId, Estimate, EstimateConfidence, EstimateSource, EvidenceId, LayerId, MediaType,
+    MicroUsd, Millis, PageId, PageRect, Probability, Profile, Rect, RegionId, RequestId,
+    ResourceEstimate, ScopedBlob, Sha256Digest, Stage, Unit,
 };
 use ferrodoc_engine_api::{
     Engine, EngineCandidate, EngineCompatibility, EngineDescriptor, EngineError, EngineRequest,
@@ -25,7 +25,8 @@ use ferrodoc_runtime::{
     durable::{DurableError, DurableStateStore, ReferenceCheckpointPolicy},
     enrichment::{
         CapabilityGoal, EnrichmentPlanningOutcome, EnrichmentRequest, EnrichmentRuntime,
-        EnrichmentStageDescriptor,
+        EnrichmentStageDescriptor, PlanEscalation, PlanningCacheState, PlanningEstimate,
+        StagePlanningProfile, StageScopePolicy,
     },
 };
 
@@ -35,6 +36,7 @@ struct ScopedTableEngine {
     calls: Arc<Mutex<Vec<EngineRequest>>>,
     latency: u64,
     quality: Option<Probability>,
+    vram: Estimate<Bytes>,
     wrong_content: bool,
 }
 
@@ -65,8 +67,14 @@ impl ScopedTableEngine {
             calls,
             latency,
             quality: quality.map(|value| Probability::new(value).unwrap()),
+            vram: Estimate::Known(Bytes::new(0)),
             wrong_content: false,
         }
+    }
+
+    fn with_vram(mut self, vram: Estimate<Bytes>) -> Self {
+        self.vram = vram;
+        self
     }
 }
 
@@ -96,7 +104,7 @@ impl Engine for ScopedTableEngine {
             resources: ResourceEstimate {
                 peak_ram: Estimate::Known(Bytes::new(1024)),
                 warm_ram: Estimate::Known(Bytes::new(0)),
-                peak_vram: Estimate::Known(Bytes::new(0)),
+                peak_vram: self.vram.clone(),
                 warm_vram: Estimate::Known(Bytes::new(0)),
                 latency: Estimate::Known(Millis::new(self.latency)),
                 remote_cost: Estimate::Known(MicroUsd::new(0)),
@@ -279,6 +287,65 @@ fn fixture_runtime(calls: Arc<Mutex<Vec<EngineRequest>>>) -> EnrichmentRuntime {
         )
         .unwrap();
     runtime
+}
+
+fn measured_planning(
+    quality: u64,
+    cpu: u64,
+    scope_policy: StageScopePolicy,
+) -> StagePlanningProfile {
+    let report = Sha256Digest::of_bytes(include_bytes!(
+        "../../../fixtures/planning/fp5-controlled-observations.json"
+    ));
+    let measured = |value| {
+        PlanningEstimate::known(
+            value,
+            value,
+            value,
+            EstimateSource {
+                confidence: EstimateConfidence::Measured,
+                method: "controlled_minimized_fixture_not_corpus_quality".into(),
+            },
+            Some(report),
+        )
+        .unwrap()
+    };
+    let calibrated = |value| {
+        PlanningEstimate::known(
+            value,
+            value,
+            value,
+            EstimateSource {
+                confidence: EstimateConfidence::Calibrated,
+                method: "controlled_minimized_fixture_assumption".into(),
+            },
+            Some(report),
+        )
+        .unwrap()
+    };
+    let bounded = |value| {
+        PlanningEstimate::known(
+            value,
+            value,
+            value,
+            EstimateSource {
+                confidence: EstimateConfidence::Conservative,
+                method: "controlled_minimized_fixture_static_resource_bound".into(),
+            },
+            Some(report),
+        )
+        .unwrap()
+    };
+    StagePlanningProfile {
+        scope_policy,
+        capability_gain_bps: calibrated(10_000),
+        success_probability_bps: calibrated(9_500),
+        quality_bps: measured(quality),
+        cpu_millis: bounded(cpu),
+        gpu_millis: bounded(0),
+        read_bytes: bounded(10),
+        write_bytes: bounded(20),
+    }
 }
 
 #[test]
@@ -496,6 +563,180 @@ fn candidate_plans_remove_a_provably_dominated_alternative() {
         ("table.slow", "slow-table", 2, 0.8),
     ] {
         runtime
+            .register_stage_with_planning(
+                EnrichmentStageDescriptor {
+                    id: stage_id.into(),
+                    stage: Stage::Layout,
+                    build: Sha256Digest::of_bytes(engine_id.as_bytes()),
+                    model_digest: None,
+                    produces: Capability::TableRecognize,
+                    requires: BTreeSet::new(),
+                },
+                measured_planning(
+                    (quality * 10_000.0) as u64,
+                    latency,
+                    StageScopePolicy::Requested,
+                ),
+                ScopedTableEngine::with_estimate(calls.clone(), engine_id, latency, Some(quality)),
+            )
+            .unwrap();
+    }
+    let EnrichmentPlanningOutcome::CandidatePlans { pareto } =
+        runtime.plan(&request, &document, &manifest).unwrap()
+    else {
+        panic!("expected candidate plans");
+    };
+    assert_eq!(pareto.len(), 1);
+    assert_eq!(pareto[0].invocations[0].engine_id, "fast-table");
+}
+
+#[test]
+fn pareto_retains_quality_cost_tradeoff_and_planning_does_not_execute() {
+    let (bytes, document, manifest, targets) = fixture();
+    let request = request(&bytes, &manifest, BTreeSet::from([targets[0].clone()]));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut runtime = EnrichmentRuntime::new(
+        ConversionOptions {
+            profile: Profile::Offline,
+            ..ConversionOptions::default()
+        },
+        unknown_inventory(),
+        None,
+    );
+    for (stage_id, engine_id, latency, quality, quality_bps, cpu) in [
+        ("table.accurate", "accurate-table", 10, 0.95, 9_500, 10),
+        ("table.fast", "fast-table", 1, 0.80, 8_000, 1),
+    ] {
+        runtime
+            .register_stage_with_planning(
+                EnrichmentStageDescriptor {
+                    id: stage_id.into(),
+                    stage: Stage::Layout,
+                    build: Sha256Digest::of_bytes(engine_id.as_bytes()),
+                    model_digest: None,
+                    produces: Capability::TableRecognize,
+                    requires: BTreeSet::new(),
+                },
+                measured_planning(quality_bps, cpu, StageScopePolicy::Requested),
+                ScopedTableEngine::with_estimate(calls.clone(), engine_id, latency, Some(quality)),
+            )
+            .unwrap();
+    }
+    let EnrichmentPlanningOutcome::CandidatePlans { pareto } =
+        runtime.plan(&request, &document, &manifest).unwrap()
+    else {
+        panic!("expected plans")
+    };
+    assert_eq!(pareto.len(), 2);
+    assert!(
+        calls.lock().unwrap().is_empty(),
+        "planning must not execute engines"
+    );
+    assert!(pareto.iter().all(|plan| matches!(
+        plan.explanation.quality_bps,
+        PlanningEstimate::Known {
+            benchmark_digest: Some(_),
+            ..
+        }
+    )));
+}
+
+#[test]
+fn targeted_and_whole_document_alternatives_are_explainable_and_plan_id_is_semantic() {
+    let (bytes, document, manifest, targets) = fixture();
+    let mut request = request(&bytes, &manifest, BTreeSet::from([targets[0].clone()]));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut runtime = EnrichmentRuntime::new(
+        ConversionOptions {
+            profile: Profile::Offline,
+            ..ConversionOptions::default()
+        },
+        unknown_inventory(),
+        None,
+    );
+    for (stage_id, engine_id, scope, quality, cpu) in [
+        (
+            "table.targeted",
+            "targeted-table",
+            StageScopePolicy::Requested,
+            8_000,
+            1,
+        ),
+        (
+            "table.whole",
+            "whole-table",
+            StageScopePolicy::WholeDocument,
+            9_000,
+            20,
+        ),
+    ] {
+        runtime
+            .register_stage_with_planning(
+                EnrichmentStageDescriptor {
+                    id: stage_id.into(),
+                    stage: Stage::Layout,
+                    build: Sha256Digest::of_bytes(engine_id.as_bytes()),
+                    model_digest: None,
+                    produces: Capability::TableRecognize,
+                    requires: BTreeSet::new(),
+                },
+                measured_planning(quality, cpu, scope),
+                ScopedTableEngine::with_estimate(
+                    calls.clone(),
+                    engine_id,
+                    cpu,
+                    Some(quality as f64 / 10_000.0),
+                ),
+            )
+            .unwrap();
+    }
+    let first = match runtime.plan(&request, &document, &manifest).unwrap() {
+        EnrichmentPlanningOutcome::CandidatePlans { pareto } => pareto,
+        outcome => panic!("unexpected {outcome:?}"),
+    };
+    assert_eq!(first.len(), 2);
+    let whole = first
+        .iter()
+        .find(|plan| matches!(plan.invocations[0].scope, RefinementScope::Document))
+        .unwrap();
+    assert!(
+        whole
+            .explanation
+            .escalations
+            .iter()
+            .any(|reason| matches!(reason, PlanEscalation::WholeDocumentForNarrowGoal { .. }))
+    );
+    let ids = first
+        .iter()
+        .map(|plan| plan.plan_id)
+        .collect::<BTreeSet<_>>();
+    request.request_id = RequestId::derive(&[b"different-correlation-id"]);
+    let second = match runtime.plan(&request, &document, &manifest).unwrap() {
+        EnrichmentPlanningOutcome::CandidatePlans { pareto } => pareto,
+        outcome => panic!("unexpected {outcome:?}"),
+    };
+    assert_eq!(ids, second.iter().map(|plan| plan.plan_id).collect());
+    assert!(calls.lock().unwrap().is_empty());
+}
+
+#[test]
+fn unknown_planning_dimensions_make_dominance_indeterminate() {
+    let (bytes, document, manifest, targets) = fixture();
+    let request = request(&bytes, &manifest, BTreeSet::from([targets[0].clone()]));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut runtime = EnrichmentRuntime::new(
+        ConversionOptions {
+            profile: Profile::Offline,
+            ..ConversionOptions::default()
+        },
+        unknown_inventory(),
+        None,
+    );
+    for (stage_id, engine_id, latency, quality) in [
+        ("table.fast", "unknown-fast", 1, 0.9),
+        ("table.slow", "unknown-slow", 2, 0.8),
+    ] {
+        runtime
             .register_stage(
                 EnrichmentStageDescriptor {
                     id: stage_id.into(),
@@ -512,10 +753,82 @@ fn candidate_plans_remove_a_provably_dominated_alternative() {
     let EnrichmentPlanningOutcome::CandidatePlans { pareto } =
         runtime.plan(&request, &document, &manifest).unwrap()
     else {
-        panic!("expected candidate plans");
+        panic!("expected plans")
     };
-    assert_eq!(pareto.len(), 1);
-    assert_eq!(pareto[0].invocations[0].engine_id, "fast-table");
+    assert_eq!(pareto.len(), 2);
+    assert!(pareto.iter().all(|plan| {
+        plan.explanation
+            .escalations
+            .iter()
+            .any(|reason| matches!(reason, PlanEscalation::UnknownEstimate { .. }))
+    }));
+}
+
+#[test]
+fn enrichment_low_vram_hard_gate_refuses_excess_and_unknown_without_fallback() {
+    let (bytes, document, manifest, targets) = fixture();
+    let request = request(&bytes, &manifest, BTreeSet::from([targets[0].clone()]));
+    for (engine_id, vram, expected) in [
+        (
+            "over-vram",
+            Estimate::Known(Bytes::new(3 * Bytes::GIB)),
+            "VramBudgetExceeded",
+        ),
+        ("unknown-vram", Estimate::Unknown, "VramUnknown"),
+    ] {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mut runtime = EnrichmentRuntime::new(
+            ConversionOptions {
+                profile: Profile::LowVram,
+                ..ConversionOptions::default()
+            },
+            unknown_inventory(),
+            None,
+        );
+        runtime
+            .register_stage(
+                EnrichmentStageDescriptor {
+                    id: format!("stage.{engine_id}"),
+                    stage: Stage::Layout,
+                    build: Sha256Digest::of_bytes(engine_id.as_bytes()),
+                    model_digest: None,
+                    produces: Capability::TableRecognize,
+                    requires: BTreeSet::new(),
+                },
+                ScopedTableEngine::with_estimate(calls.clone(), engine_id, 1, Some(0.8))
+                    .with_vram(vram),
+            )
+            .unwrap();
+        let EnrichmentPlanningOutcome::NoAdmissiblePlan { reasons } =
+            runtime.plan(&request, &document, &manifest).unwrap()
+        else {
+            panic!("hard VRAM gate must refuse")
+        };
+        assert!(reasons.iter().any(|reason| reason.contains(expected)));
+        assert!(calls.lock().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn controlled_measurement_fixture_is_self_consistent_and_explicitly_non_corpus() {
+    let value: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../../fixtures/planning/fp5-controlled-observations.json"
+    ))
+    .unwrap();
+    assert!(
+        value["scope"]
+            .as_str()
+            .unwrap()
+            .contains("not representative corpus")
+    );
+    for observation in value["observations"].as_array().unwrap() {
+        let truth = observation["truth_items"].as_u64().unwrap();
+        let correct = observation["correct_items"].as_u64().unwrap();
+        assert_eq!(
+            observation["quality_bps"].as_u64(),
+            Some(correct * 10_000 / truth)
+        );
+    }
 }
 
 #[test]
@@ -548,6 +861,20 @@ fn durable_cold_warm_reuse_and_checkpoint_tail_replay_are_canonical() {
         .unwrap();
     assert_eq!(cold_calls.lock().unwrap().len(), 1);
     assert_eq!(first.durable_reuse[0].cache, CacheDecision::Miss);
+    let warm_plan = match cold
+        .plan(&first_request, &initial, &initial_manifest)
+        .unwrap()
+    {
+        EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
+        outcome => panic!("unexpected plan: {outcome:?}"),
+    };
+    assert!(
+        warm_plan
+            .explanation
+            .cache_states
+            .iter()
+            .all(|observation| { observation.state == PlanningCacheState::VerifiedHit })
+    );
     let first_artifacts = first.durable_artifacts.clone().unwrap();
     let storage = first_artifacts.summarize(bytes.len() as u64, first.document.pages.len() as u32);
     assert!(storage.delta_bytes > 0);

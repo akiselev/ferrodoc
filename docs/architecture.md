@@ -59,6 +59,12 @@ The `Engine` trait is synchronous and `Send`. Blocking native libraries therefor
 
 Candidate planning rejects unknown hard estimates by default and never invents a fallback. The scheduler grants CPU-worker, host-RAM, and per-device leases; an explicitly guarded unknown estimate reserves the entire relevant budget. Cache entries are published atomically and keyed only by semantic identity. Hardware measurements and cache/lease outcomes remain outside canonical document identity.
 
+Progressive capability planning returns a local, explainable Pareto frontier after those hard
+gates. Fixed-point outcome/resource intervals preserve uncertainty, targeted and whole-document
+alternatives remain visible, and semantic plan identity excludes measurements and request
+correlation. Ferrodoc does not own Foundry's global corpus utility, fairness, or queue ordering; see
+[FDX5 explainable local Pareto planning](fdx/FDX5_EXPLAINABLE_PARETO.md).
+
 See [ADR 0001](adr/0001-consolidate-runtime.md) and [ADR 0002](adr/0002-transport-independent-engines.md).
 Benchmark integrity and held-out governance are specified in [Benchmarking and corpus governance](benchmarking.md).
 Engine capabilities, estimates, dependencies, licenses, isolation, and benchmark status are specified in the [qualified engine portfolio](engines/README.md).

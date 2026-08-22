@@ -66,6 +66,11 @@ to the source, input state, producer/build, scope/config, schema, and seed; phys
 remain outside logical state identity. See
 [FDX4 durable state reuse](docs/fdx/FDX4_DURABLE_STATE_REUSE.md).
 
+FP5 adds explainable hard-admitted local alternatives with deterministic plan identity,
+source-bearing fixed-point outcome/resource uncertainty, targeted versus whole-document
+escalations, and true Pareto retention. It deliberately leaves corpus priority and global utility
+to Foundry; see [FDX5 explainable Pareto planning](docs/fdx/FDX5_EXPLAINABLE_PARETO.md).
+
 The deterministic foundry, real regression corpus, evaluator contracts, metrics, measurement evidence, held-out rules, and Pareto comparison workflow are described in [Benchmarking and corpus governance](docs/benchmarking.md). The default benchmark smoke is offline and explicitly verifies that missing work scores as failure rather than success.
 
 The router and experiment commands are offline. `router train` writes a model only after re-hashing every conversion trace and benchmark report; its qualification field remains `rejected` unless it beats all declared deterministic baselines on identical held-out cases. `research run` reads immutable reports, re-hashes protected truth and evaluator files before and after scoring, observes cumulative budgets, and atomically writes resumable ledger state.

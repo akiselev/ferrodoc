@@ -6,12 +6,12 @@ use std::{
 };
 
 use ferrodoc_core::{
-    ArtifactId, Capability, DocumentStateId, LayerId, PageId, RequestId, ScopedBlob, Sha256Digest,
-    Stage,
+    ArtifactId, Capability, DeviceKind, DocumentStateId, EstimateConfidence, EstimateSource,
+    LayerId, PageId, RequestId, ScopedBlob, Sha256Digest, Stage,
 };
 use ferrodoc_engine_api::{
-    Engine, EngineCandidate, EngineRequest, HardwareInventory, SOURCE_TEXT_EVIDENCE_PARAMETER,
-    SourceTextEvidence, evidence_parameters,
+    Engine, EngineCandidate, EngineRequest, HardwareInventory, NetworkUse,
+    SOURCE_TEXT_EVIDENCE_PARAMETER, SourceTextEvidence, evidence_parameters,
 };
 use ferrodoc_ir::{
     CoverageEntry, DOCUMENT_STATE_SCHEMA, DeltaProducer, Document, DocumentStateManifest,
@@ -81,8 +81,14 @@ pub struct EnrichmentStageDescriptor {
 pub struct EnrichmentInvocation {
     /// Registered stage.
     pub stage_id: String,
+    /// Immutable registered stage build identity.
+    pub stage_build: Sha256Digest,
+    /// Immutable model identity, when applicable.
+    pub model_digest: Option<Sha256Digest>,
     /// Selected engine.
     pub engine_id: String,
+    /// Engine implementation/version selected at planning time.
+    pub engine_version: String,
     /// Capability produced by the stage.
     pub capability: Capability,
     /// Atomic scope sent to the engine.
@@ -93,13 +99,227 @@ pub struct EnrichmentInvocation {
     pub candidate: EngineCandidate,
 }
 
+/// Integer interval for a planning estimate. Outcome estimates use basis points; resource
+/// estimates use the unit named by their containing field. Unknown is never treated as zero.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum PlanningEstimate {
+    /// A bounded point estimate with auditable provenance.
+    Known {
+        /// Conservative lower bound.
+        lower: u64,
+        /// Expected value.
+        point: u64,
+        /// Conservative upper bound.
+        upper: u64,
+        /// Source and confidence of the estimate.
+        source: EstimateSource,
+        /// Optional immutable benchmark or fixture report digest.
+        #[serde(default)]
+        benchmark_digest: Option<Sha256Digest>,
+    },
+    /// No defensible estimate is available.
+    Unknown {
+        /// Stable explanation of the missing evidence.
+        reason: String,
+    },
+}
+
+impl PlanningEstimate {
+    /// Creates a checked interval.
+    pub fn known(
+        lower: u64,
+        point: u64,
+        upper: u64,
+        source: EstimateSource,
+        benchmark_digest: Option<Sha256Digest>,
+    ) -> Result<Self, RuntimeError> {
+        if lower > point || point > upper {
+            return Err(RuntimeError::InvalidEnrichment(
+                "planning estimate must satisfy lower <= point <= upper".into(),
+            ));
+        }
+        Ok(Self::Known {
+            lower,
+            point,
+            upper,
+            source,
+            benchmark_digest,
+        })
+    }
+
+    fn bounds(&self) -> Option<(u64, u64)> {
+        match self {
+            Self::Known { lower, upper, .. } => Some((*lower, *upper)),
+            Self::Unknown { .. } => None,
+        }
+    }
+}
+
+/// Whether a stage executes only the requested scope or escalates to the complete document.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+#[schemars(rename_all = "snake_case")]
+pub enum StageScopePolicy {
+    /// Preserve the caller's page-qualified atomic scope.
+    #[default]
+    Requested,
+    /// This engine can only satisfy the goal by processing the complete document.
+    WholeDocument,
+}
+
+/// Local planning evidence supplied by a registered stage. These values never enter evidence IDs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct StagePlanningProfile {
+    /// Scope behavior of the stage.
+    pub scope_policy: StageScopePolicy,
+    /// Expected capability gain in basis points.
+    pub capability_gain_bps: PlanningEstimate,
+    /// Expected probability of successful completion in basis points.
+    pub success_probability_bps: PlanningEstimate,
+    /// Expected output quality in basis points.
+    pub quality_bps: PlanningEstimate,
+    /// Host compute time in milliseconds.
+    pub cpu_millis: PlanningEstimate,
+    /// Accelerator compute time in milliseconds.
+    pub gpu_millis: PlanningEstimate,
+    /// Source bytes expected to be read.
+    pub read_bytes: PlanningEstimate,
+    /// Intermediate/result bytes expected to be written.
+    pub write_bytes: PlanningEstimate,
+}
+
+impl Default for StagePlanningProfile {
+    fn default() -> Self {
+        let unknown = || PlanningEstimate::Unknown {
+            reason: "no stage planning evidence registered".into(),
+        };
+        Self {
+            scope_policy: StageScopePolicy::Requested,
+            capability_gain_bps: unknown(),
+            success_probability_bps: unknown(),
+            quality_bps: unknown(),
+            cpu_millis: unknown(),
+            gpu_millis: unknown(),
+            read_bytes: unknown(),
+            write_bytes: unknown(),
+        }
+    }
+}
+
+/// Durable refinement availability observed without executing the engine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+#[schemars(rename_all = "snake_case")]
+pub enum PlanningCacheState {
+    /// Canonical immutable delta bytes were found and verified.
+    VerifiedHit,
+    /// A durable store is configured but the exact key is absent.
+    Miss,
+    /// No durable provider is configured.
+    NotConfigured,
+    /// Nondeterministic execution has no seed and cannot be reused safely.
+    Uncacheable,
+}
+
+/// Cache state for one exact stage/scope refinement key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct PlanningCacheObservation {
+    /// Registered stage identity.
+    pub stage_id: String,
+    /// Exact semantic execution scope.
+    pub scope: RefinementScope,
+    /// Verified state for the complete refinement key.
+    pub state: PlanningCacheState,
+}
+
+/// Why a locally valid plan expands cost, placement, or uncertainty.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum PlanEscalation {
+    /// A narrow goal requires processing the entire document.
+    WholeDocumentForNarrowGoal {
+        /// Stage requiring escalation.
+        stage_id: String,
+    },
+    /// The selected placement uses an accelerator.
+    AcceleratorRequired {
+        /// Stage requiring escalation.
+        stage_id: String,
+        /// Selected accelerator class.
+        device: DeviceKind,
+    },
+    /// The engine may or must use a network under its descriptor.
+    NetworkCapable {
+        /// Stage requiring escalation.
+        stage_id: String,
+    },
+    /// The exact durable refinement key is not present.
+    ColdCache {
+        /// Stage requiring escalation.
+        stage_id: String,
+    },
+    /// Declared semantic prerequisites must already be satisfied.
+    PrerequisitesRequired {
+        /// Stage with prerequisites.
+        stage_id: String,
+        /// Required capabilities.
+        capabilities: BTreeSet<Capability>,
+    },
+    /// One or more outcome/resource dimensions are unknown.
+    UnknownEstimate {
+        /// Stage containing the unknown dimension.
+        stage_id: String,
+    },
+    /// One or more dimensions rely on heuristic evidence.
+    LowConfidenceEstimate {
+        /// Stage containing the heuristic dimension.
+        stage_id: String,
+    },
+}
+
+/// Explainable outcome and resource dimensions for a complete local plan.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct EnrichmentPlanExplanation {
+    /// Original per-stage estimates, preserving every source and uncertainty interval.
+    pub stage_profiles: BTreeMap<String, StagePlanningProfile>,
+    /// Aggregate expected capability gain in basis points.
+    pub capability_gain_bps: PlanningEstimate,
+    /// Conservative aggregate success probability in basis points.
+    pub success_probability_bps: PlanningEstimate,
+    /// Conservative aggregate output quality in basis points.
+    pub quality_bps: PlanningEstimate,
+    /// Aggregate host compute time in milliseconds.
+    pub cpu_millis: PlanningEstimate,
+    /// Aggregate accelerator compute time in milliseconds.
+    pub gpu_millis: PlanningEstimate,
+    /// Accelerator time partitioned by the selected physical device class.
+    pub gpu_millis_by_device: BTreeMap<DeviceKind, PlanningEstimate>,
+    /// Aggregate source bytes read.
+    pub read_bytes: PlanningEstimate,
+    /// Aggregate intermediate/result bytes written.
+    pub write_bytes: PlanningEstimate,
+    /// Cache state for every planned invocation.
+    pub cache_states: Vec<PlanningCacheObservation>,
+    /// Union of declared semantic prerequisites.
+    pub prerequisites: BTreeSet<Capability>,
+    /// Stable reasons explaining expanded work or uncertainty.
+    pub escalations: Vec<PlanEscalation>,
+}
+
 /// One admissible local plan.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct EnrichmentCandidatePlan {
     /// Correlation identity of the request this plan answers.
     pub enrichment_request_id: RequestId,
+    /// Stable semantic identity, independent of correlation IDs and estimate observations.
+    pub plan_id: Sha256Digest,
+    /// Pinned immutable logical input state.
+    pub input_state_id: DocumentStateId,
     /// Deterministically ordered atomic invocations.
     pub invocations: Vec<EnrichmentInvocation>,
+    /// Auditable local outcome/cost/resource/uncertainty evidence.
+    pub explanation: EnrichmentPlanExplanation,
 }
 
 /// Explainable planning outcome for a capability request.
@@ -152,6 +372,7 @@ pub struct DurableReuseRecord {
 
 struct RegisteredStage {
     descriptor: EnrichmentStageDescriptor,
+    planning: StagePlanningProfile,
     engine: Box<dyn Engine>,
 }
 
@@ -200,7 +421,18 @@ impl EnrichmentRuntime {
         descriptor: EnrichmentStageDescriptor,
         engine: impl Engine + 'static,
     ) -> Result<(), RuntimeError> {
+        self.register_stage_with_planning(descriptor, StagePlanningProfile::default(), engine)
+    }
+
+    /// Registers a stage together with explicit, provenance-bearing FP5 planning evidence.
+    pub fn register_stage_with_planning(
+        &mut self,
+        descriptor: EnrichmentStageDescriptor,
+        planning: StagePlanningProfile,
+        engine: impl Engine + 'static,
+    ) -> Result<(), RuntimeError> {
         engine.descriptor().validate()?;
+        validate_planning_profile(&planning)?;
         if descriptor.id.trim().is_empty()
             || !engine
                 .descriptor()
@@ -221,6 +453,7 @@ impl EnrichmentRuntime {
             descriptor.id.clone(),
             RegisteredStage {
                 descriptor,
+                planning,
                 engine: Box::new(engine),
             },
         );
@@ -259,36 +492,37 @@ impl EnrichmentRuntime {
                 if registered.descriptor.produces != capability {
                     continue;
                 }
-                if let Some(missing) = registered
-                    .descriptor
-                    .requires
-                    .iter()
-                    .find(|required| !coverage_complete(&manifest.coverage, **required, &scope))
-                {
+                let execution_scope = match registered.planning.scope_policy {
+                    StageScopePolicy::Requested => scope.clone(),
+                    StageScopePolicy::WholeDocument => RefinementScope::Document,
+                };
+                if let Some(missing) = registered.descriptor.requires.iter().find(|required| {
+                    !coverage_complete(&manifest.coverage, **required, &execution_scope)
+                }) {
                     reasons.push(format!(
                         "stage {} requires {} complete over {}",
                         registered.descriptor.id,
                         missing,
-                        scope_label(&scope)
+                        scope_label(&execution_scope)
                     ));
                     continue;
                 }
-                let page_index = scope_page_index(&scope, document)?;
+                let page_index = scope_page_index(&execution_scope, document)?;
                 let mut parameters = BTreeMap::new();
                 parameters.insert(
                     "ferrodoc.scope".into(),
-                    serde_json::to_value(&scope)
+                    serde_json::to_value(&execution_scope)
                         .map_err(|error| RuntimeError::InvalidEnrichment(error.to_string()))?,
                 );
                 if capability == Capability::TableRecognize {
-                    let source_text = scope_source_text(&scope, document)?;
+                    let source_text = scope_source_text(&execution_scope, document)?;
                     parameters.insert(
                         SOURCE_TEXT_EVIDENCE_PARAMETER.into(),
                         serde_json::to_value(source_text)
                             .map_err(|error| RuntimeError::InvalidEnrichment(error.to_string()))?,
                     );
                 }
-                let semantic_scope = serde_json::to_vec(&scope)
+                let semantic_scope = serde_json::to_vec(&execution_scope)
                     .map_err(|error| RuntimeError::InvalidEnrichment(error.to_string()))?;
                 let engine_request = EngineRequest {
                     request_id: RequestId::derive(&[
@@ -300,7 +534,7 @@ impl EnrichmentRuntime {
                     capability,
                     input: request.source.clone(),
                     page_index,
-                    scope: Some(scope.clone()),
+                    scope: Some(execution_scope.clone()),
                     parameters,
                     deterministic_seed: None,
                     deadline: self.options.deadline,
@@ -312,23 +546,29 @@ impl EnrichmentRuntime {
                     &self.options,
                     &self.inventory,
                 )?;
-                if let Some(candidate) = report.selected {
+                let mut accepted = false;
+                for decision in report.decisions {
+                    if !decision.accepted {
+                        let stage = registered.descriptor.id.clone();
+                        reasons.extend(decision.reasons.into_iter().map(move |reason| {
+                            format!("stage {stage}: {:?}: {}", reason.code, reason.explanation)
+                        }));
+                        continue;
+                    }
+                    accepted = true;
                     goal_choices.push(EnrichmentInvocation {
                         stage_id: registered.descriptor.id.clone(),
+                        stage_build: registered.descriptor.build,
+                        model_digest: registered.descriptor.model_digest,
                         engine_id: registered.engine.descriptor().id.clone(),
+                        engine_version: registered.engine.descriptor().version.clone(),
                         capability,
-                        scope: scope.clone(),
-                        request: engine_request,
-                        candidate,
+                        scope: execution_scope.clone(),
+                        request: engine_request.clone(),
+                        candidate: decision.input.candidate,
                     });
-                } else {
-                    reasons.extend(report.decisions.into_iter().flat_map(|decision| {
-                        let stage = registered.descriptor.id.clone();
-                        decision.reasons.into_iter().map(move |reason| {
-                            format!("stage {stage}: {:?}: {}", reason.code, reason.explanation)
-                        })
-                    }));
                 }
+                let _ = accepted;
             }
             if goal_choices.is_empty() {
                 if !self
@@ -359,20 +599,46 @@ impl EnrichmentRuntime {
                 .flat_map(|prefix| {
                     alternatives.iter().cloned().map(move |invocation| {
                         let mut plan = prefix.clone();
-                        plan.push(invocation);
+                        if !plan.iter().any(|existing: &EnrichmentInvocation| {
+                            invocation_semantic_key(existing)
+                                == invocation_semantic_key(&invocation)
+                        }) {
+                            plan.push(invocation);
+                        }
                         plan
                     })
                 })
-                .take(MAX_PARETO_PLANS)
                 .collect();
+            if combinations.len() > MAX_PARETO_PLANS {
+                return Err(RuntimeError::InvalidEnrichment(format!(
+                    "candidate frontier exceeds the explicit {MAX_PARETO_PLANS}-plan bound"
+                )));
+            }
         }
-        let candidates = combinations
-            .into_iter()
-            .map(|invocations| EnrichmentCandidatePlan {
+        let mut candidates = Vec::new();
+        for mut invocations in combinations {
+            let whole_document_capabilities = invocations
+                .iter()
+                .filter(|invocation| matches!(invocation.scope, RefinementScope::Document))
+                .map(|invocation| invocation.capability)
+                .collect::<BTreeSet<_>>();
+            invocations.retain(|invocation| {
+                matches!(invocation.scope, RefinementScope::Document)
+                    || !whole_document_capabilities.contains(&invocation.capability)
+            });
+            invocations.sort_by_key(invocation_semantic_key);
+            let plan_id = semantic_plan_id(request, manifest, &invocations)?;
+            let explanation = self.explain_plan(request, manifest, &invocations)?;
+            candidates.push(EnrichmentCandidatePlan {
                 enrichment_request_id: request.request_id.clone(),
+                plan_id,
+                input_state_id: request.input_state_id.clone(),
                 invocations,
-            })
-            .collect::<Vec<_>>();
+                explanation,
+            });
+        }
+        candidates.sort_by_key(|plan| plan.plan_id);
+        candidates.dedup_by_key(|plan| plan.plan_id);
         let pareto = candidates
             .iter()
             .enumerate()
@@ -384,6 +650,190 @@ impl EnrichmentRuntime {
             .map(|(_, candidate)| candidate.clone())
             .collect();
         Ok(EnrichmentPlanningOutcome::CandidatePlans { pareto })
+    }
+
+    fn explain_plan(
+        &self,
+        request: &EnrichmentRequest,
+        manifest: &DocumentStateManifest,
+        invocations: &[EnrichmentInvocation],
+    ) -> Result<EnrichmentPlanExplanation, RuntimeError> {
+        let profiles = invocations
+            .iter()
+            .map(|invocation| {
+                self.stages.get(&invocation.stage_id).ok_or_else(|| {
+                    RuntimeError::InvalidEnrichment("planned stage disappeared".into())
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let capability_gain_bps = aggregate_estimates(
+            profiles
+                .iter()
+                .map(|stage| &stage.planning.capability_gain_bps),
+            Aggregate::SumCapped(10_000),
+        )?;
+        let success_probability_bps = aggregate_estimates(
+            profiles
+                .iter()
+                .map(|stage| &stage.planning.success_probability_bps),
+            Aggregate::Minimum,
+        )?;
+        let quality_bps = aggregate_estimates(
+            profiles.iter().map(|stage| &stage.planning.quality_bps),
+            Aggregate::Minimum,
+        )?;
+        let cpu_millis = aggregate_estimates(
+            profiles.iter().map(|stage| &stage.planning.cpu_millis),
+            Aggregate::Sum,
+        )?;
+        let gpu_millis = aggregate_estimates(
+            profiles.iter().map(|stage| &stage.planning.gpu_millis),
+            Aggregate::Sum,
+        )?;
+        let mut gpu_groups: BTreeMap<DeviceKind, Vec<&PlanningEstimate>> = BTreeMap::new();
+        for (invocation, stage) in invocations.iter().zip(&profiles) {
+            if invocation.candidate.device.kind() != DeviceKind::Cpu {
+                gpu_groups
+                    .entry(invocation.candidate.device.kind())
+                    .or_default()
+                    .push(&stage.planning.gpu_millis);
+            }
+        }
+        let gpu_millis_by_device = gpu_groups
+            .into_iter()
+            .map(|(device, estimates)| {
+                Ok((device, aggregate_estimates(estimates, Aggregate::Sum)?))
+            })
+            .collect::<Result<BTreeMap<_, _>, RuntimeError>>()?;
+        let read_bytes = aggregate_estimates(
+            profiles.iter().map(|stage| &stage.planning.read_bytes),
+            Aggregate::Sum,
+        )?;
+        let write_bytes = aggregate_estimates(
+            profiles.iter().map(|stage| &stage.planning.write_bytes),
+            Aggregate::Sum,
+        )?;
+        let mut cache_states = Vec::new();
+        let mut stage_profiles = BTreeMap::new();
+        let mut prerequisites = BTreeSet::new();
+        let mut escalations = Vec::new();
+        for (invocation, stage) in invocations.iter().zip(profiles) {
+            stage_profiles.insert(stage.descriptor.id.clone(), stage.planning.clone());
+            prerequisites.extend(stage.descriptor.requires.iter().copied());
+            let descriptor = stage.engine.descriptor();
+            let cache_state =
+                if !descriptor.deterministic && invocation.request.deterministic_seed.is_none() {
+                    PlanningCacheState::Uncacheable
+                } else if let Some(store) = &self.durable {
+                    let key = refinement_key(RefinementKeyInput {
+                        stage: &stage.descriptor.id,
+                        stage_build: stage.descriptor.build,
+                        model_digest: stage.descriptor.model_digest,
+                        source_pdf_sha256: manifest.source_pdf_sha256,
+                        input_state_id: &request.input_state_id,
+                        engine_id: &descriptor.id,
+                        engine_version: &descriptor.version,
+                        schema_version: manifest.ir_schema,
+                        parameters: &cache_parameters(&invocation.request),
+                    })?;
+                    if store.get_refinement(&key)?.is_some() {
+                        PlanningCacheState::VerifiedHit
+                    } else {
+                        PlanningCacheState::Miss
+                    }
+                } else {
+                    PlanningCacheState::NotConfigured
+                };
+            if matches!(cache_state, PlanningCacheState::Miss) {
+                escalations.push(PlanEscalation::ColdCache {
+                    stage_id: stage.descriptor.id.clone(),
+                });
+            }
+            cache_states.push(PlanningCacheObservation {
+                stage_id: stage.descriptor.id.clone(),
+                scope: invocation.scope.clone(),
+                state: cache_state,
+            });
+            if matches!(stage.planning.scope_policy, StageScopePolicy::WholeDocument)
+                && !matches!(
+                    request
+                        .goals
+                        .iter()
+                        .find(|goal| goal.capability == invocation.capability)
+                        .map(|goal| &goal.scope),
+                    Some(RefinementScope::Document)
+                )
+            {
+                escalations.push(PlanEscalation::WholeDocumentForNarrowGoal {
+                    stage_id: stage.descriptor.id.clone(),
+                });
+            }
+            if invocation.candidate.device.kind() != DeviceKind::Cpu {
+                escalations.push(PlanEscalation::AcceleratorRequired {
+                    stage_id: stage.descriptor.id.clone(),
+                    device: invocation.candidate.device.kind(),
+                });
+            }
+            if descriptor.network_use != NetworkUse::None {
+                escalations.push(PlanEscalation::NetworkCapable {
+                    stage_id: stage.descriptor.id.clone(),
+                });
+            }
+            if !stage.descriptor.requires.is_empty() {
+                escalations.push(PlanEscalation::PrerequisitesRequired {
+                    stage_id: stage.descriptor.id.clone(),
+                    capabilities: stage.descriptor.requires.clone(),
+                });
+            }
+            let estimates = [
+                &stage.planning.capability_gain_bps,
+                &stage.planning.success_probability_bps,
+                &stage.planning.quality_bps,
+                &stage.planning.cpu_millis,
+                &stage.planning.gpu_millis,
+                &stage.planning.read_bytes,
+                &stage.planning.write_bytes,
+            ];
+            if estimates
+                .iter()
+                .any(|estimate| matches!(estimate, PlanningEstimate::Unknown { .. }))
+            {
+                escalations.push(PlanEscalation::UnknownEstimate {
+                    stage_id: stage.descriptor.id.clone(),
+                });
+            }
+            if estimates.iter().any(|estimate| {
+                matches!(
+                    estimate,
+                    PlanningEstimate::Known {
+                        source: EstimateSource {
+                            confidence: EstimateConfidence::Heuristic,
+                            ..
+                        },
+                        ..
+                    }
+                )
+            }) {
+                escalations.push(PlanEscalation::LowConfidenceEstimate {
+                    stage_id: stage.descriptor.id.clone(),
+                });
+            }
+        }
+        escalations.sort_by_key(|item| serde_json::to_string(item).unwrap_or_default());
+        Ok(EnrichmentPlanExplanation {
+            stage_profiles,
+            capability_gain_bps,
+            success_probability_bps,
+            quality_bps,
+            cpu_millis,
+            gpu_millis,
+            gpu_millis_by_device,
+            read_bytes,
+            write_bytes,
+            cache_states,
+            prerequisites,
+            escalations,
+        })
     }
 
     /// Executes one returned plan and verifies its deltas by canonical materialization.
@@ -426,6 +876,9 @@ impl EnrichmentRuntime {
                 ))
             })?;
             if registered.engine.descriptor().id != invocation.engine_id
+                || registered.engine.descriptor().version != invocation.engine_version
+                || registered.descriptor.build != invocation.stage_build
+                || registered.descriptor.model_digest != invocation.model_digest
                 || registered.descriptor.produces != invocation.capability
                 || invocation.request.scope.as_ref() != Some(&invocation.scope)
             {
@@ -618,6 +1071,140 @@ fn cache_parameters(request: &EngineRequest) -> BTreeMap<String, serde_json::Val
         );
     }
     parameters
+}
+
+fn validate_planning_profile(profile: &StagePlanningProfile) -> Result<(), RuntimeError> {
+    for (name, estimate) in [
+        ("capability gain", &profile.capability_gain_bps),
+        ("success probability", &profile.success_probability_bps),
+        ("quality", &profile.quality_bps),
+    ] {
+        if estimate.bounds().is_some_and(|(_, upper)| upper > 10_000) {
+            return Err(RuntimeError::InvalidEnrichment(format!(
+                "{name} basis-point estimate exceeds 10000"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn invocation_semantic_key(invocation: &EnrichmentInvocation) -> String {
+    serde_json::to_string(&(
+        &invocation.stage_id,
+        invocation.stage_build,
+        invocation.model_digest,
+        &invocation.engine_id,
+        &invocation.engine_version,
+        invocation.capability,
+        &invocation.scope,
+        &invocation.candidate.backend,
+        &invocation.candidate.device,
+        &invocation.request.parameters,
+        invocation.request.deterministic_seed,
+    ))
+    .expect("semantic invocation values are serializable")
+}
+
+fn semantic_plan_id(
+    request: &EnrichmentRequest,
+    manifest: &DocumentStateManifest,
+    invocations: &[EnrichmentInvocation],
+) -> Result<Sha256Digest, RuntimeError> {
+    let identities = invocations
+        .iter()
+        .map(invocation_semantic_key)
+        .collect::<Vec<_>>();
+    let bytes = serde_json::to_vec(&(
+        "ferrodoc-enrichment-plan/1",
+        manifest.source_pdf_sha256,
+        &request.input_state_id,
+        manifest.ir_schema,
+        identities,
+    ))
+    .map_err(|error| RuntimeError::InvalidEnrichment(error.to_string()))?;
+    Ok(Sha256Digest::of_bytes(&bytes))
+}
+
+#[derive(Clone, Copy)]
+enum Aggregate {
+    Sum,
+    SumCapped(u64),
+    Minimum,
+}
+
+fn aggregate_estimates<'a>(
+    estimates: impl IntoIterator<Item = &'a PlanningEstimate>,
+    operation: Aggregate,
+) -> Result<PlanningEstimate, RuntimeError> {
+    let estimates = estimates.into_iter().collect::<Vec<_>>();
+    if let Some(reason) = estimates.iter().find_map(|estimate| match estimate {
+        PlanningEstimate::Unknown { reason } => Some(reason.clone()),
+        PlanningEstimate::Known { .. } => None,
+    }) {
+        return Ok(PlanningEstimate::Unknown { reason });
+    }
+    let known = estimates
+        .iter()
+        .filter_map(|estimate| match estimate {
+            PlanningEstimate::Known {
+                lower,
+                point,
+                upper,
+                source,
+                benchmark_digest,
+            } => Some((*lower, *point, *upper, source, *benchmark_digest)),
+            PlanningEstimate::Unknown { .. } => None,
+        })
+        .collect::<Vec<_>>();
+    if known.is_empty() {
+        return Ok(PlanningEstimate::Unknown {
+            reason: "plan contains no estimate observations".into(),
+        });
+    }
+    let combine = |index: usize| -> Result<u64, RuntimeError> {
+        let mut values = known.iter().map(|item| [item.0, item.1, item.2][index]);
+        match operation {
+            Aggregate::Minimum => Ok(values.min().unwrap_or(0)),
+            Aggregate::Sum => values.try_fold(0_u64, |total, value| {
+                total.checked_add(value).ok_or_else(|| {
+                    RuntimeError::InvalidEnrichment("planning estimate overflow".into())
+                })
+            }),
+            Aggregate::SumCapped(cap) => Ok(values
+                .try_fold(0_u64, |total, value| {
+                    total.checked_add(value).ok_or_else(|| {
+                        RuntimeError::InvalidEnrichment("planning estimate overflow".into())
+                    })
+                })?
+                .min(cap)),
+        }
+    };
+    let confidence_rank = |confidence: EstimateConfidence| match confidence {
+        EstimateConfidence::Measured => 3,
+        EstimateConfidence::Calibrated => 2,
+        EstimateConfidence::Conservative => 1,
+        EstimateConfidence::Heuristic => 0,
+    };
+    let weakest = known
+        .iter()
+        .min_by_key(|item| confidence_rank(item.3.confidence))
+        .expect("nonempty");
+    let source = EstimateSource {
+        confidence: weakest.3.confidence,
+        method: format!("aggregate:{}", weakest.3.method),
+    };
+    let benchmark_digest = known
+        .iter()
+        .map(|item| item.4)
+        .reduce(|left, right| if left == right { left } else { None })
+        .flatten();
+    PlanningEstimate::known(
+        combine(0)?,
+        combine(1)?,
+        combine(2)?,
+        source,
+        benchmark_digest,
+    )
 }
 
 fn validate_cached_delta(
@@ -842,7 +1429,7 @@ struct PlanMetrics {
     warm_vram: Option<u64>,
     latency: Option<u64>,
     remote_cost: Option<u64>,
-    quality: Option<f64>,
+    quality_bps: Option<u64>,
 }
 
 fn plan_metrics(plan: &EnrichmentCandidatePlan) -> PlanMetrics {
@@ -900,32 +1487,38 @@ fn plan_metrics(plan: &EnrichmentCandidatePlan) -> PlanMetrics {
             .iter()
             .map(|item| item.remote_cost.known().map(|value| value.get()))
             .collect()),
-        quality: estimates
+        quality_bps: estimates
             .iter()
             .map(|item| item.quality.known().map(|value| value.get()))
             .collect::<Option<Vec<_>>>()
-            .and_then(|values| values.into_iter().reduce(f64::min)),
+            .and_then(|values| {
+                values
+                    .into_iter()
+                    .map(|value| (value * 10_000.0).round() as u64)
+                    .reduce(u64::min)
+            }),
     }
 }
 
 fn plan_dominates(left: &EnrichmentCandidatePlan, right: &EnrichmentCandidatePlan) -> bool {
-    let left = plan_metrics(left);
-    let right = plan_metrics(right);
+    let left_metrics = plan_metrics(left);
+    let right_metrics = plan_metrics(right);
     let costs = [
-        (left.peak_ram, right.peak_ram),
-        (left.warm_ram, right.warm_ram),
-        (left.peak_vram, right.peak_vram),
-        (left.warm_vram, right.warm_vram),
-        (left.latency, right.latency),
-        (left.remote_cost, right.remote_cost),
+        (left_metrics.peak_ram, right_metrics.peak_ram),
+        (left_metrics.warm_ram, right_metrics.warm_ram),
+        (left_metrics.peak_vram, right_metrics.peak_vram),
+        (left_metrics.warm_vram, right_metrics.warm_vram),
+        (left_metrics.latency, right_metrics.latency),
+        (left_metrics.remote_cost, right_metrics.remote_cost),
     ];
-    let Some(quality) = left.quality.zip(right.quality) else {
+    let Some(quality) = left_metrics.quality_bps.zip(right_metrics.quality_bps) else {
         return false;
     };
     if costs
         .iter()
         .any(|(left, right)| left.zip(*right).is_none_or(|(left, right)| left > right))
         || quality.0 < quality.1
+        || !explanation_no_worse(&left.explanation, &right.explanation)
     {
         return false;
     }
@@ -933,6 +1526,54 @@ fn plan_dominates(left: &EnrichmentCandidatePlan, right: &EnrichmentCandidatePla
         .iter()
         .any(|(left, right)| left.zip(*right).is_some_and(|(left, right)| left < right))
         || quality.0 > quality.1
+        || explanation_strictly_better(&left.explanation, &right.explanation)
+}
+
+fn conservative_higher(left: &PlanningEstimate, right: &PlanningEstimate) -> Option<(bool, bool)> {
+    let ((left_lower, _), (_, right_upper)) = left.bounds().zip(right.bounds())?;
+    Some((left_lower >= right_upper, left_lower > right_upper))
+}
+
+fn conservative_lower(left: &PlanningEstimate, right: &PlanningEstimate) -> Option<(bool, bool)> {
+    let ((_, left_upper), (right_lower, _)) = left.bounds().zip(right.bounds())?;
+    Some((left_upper <= right_lower, left_upper < right_lower))
+}
+
+fn explanation_comparison(
+    left: &EnrichmentPlanExplanation,
+    right: &EnrichmentPlanExplanation,
+) -> Option<(bool, bool)> {
+    let dimensions = [
+        conservative_higher(&left.capability_gain_bps, &right.capability_gain_bps),
+        conservative_higher(
+            &left.success_probability_bps,
+            &right.success_probability_bps,
+        ),
+        conservative_higher(&left.quality_bps, &right.quality_bps),
+        conservative_lower(&left.cpu_millis, &right.cpu_millis),
+        conservative_lower(&left.gpu_millis, &right.gpu_millis),
+        conservative_lower(&left.read_bytes, &right.read_bytes),
+        conservative_lower(&left.write_bytes, &right.write_bytes),
+    ];
+    let dimensions = dimensions.into_iter().collect::<Option<Vec<_>>>()?;
+    Some((
+        dimensions.iter().all(|item| item.0),
+        dimensions.iter().any(|item| item.1),
+    ))
+}
+
+fn explanation_no_worse(
+    left: &EnrichmentPlanExplanation,
+    right: &EnrichmentPlanExplanation,
+) -> bool {
+    explanation_comparison(left, right).is_some_and(|comparison| comparison.0)
+}
+
+fn explanation_strictly_better(
+    left: &EnrichmentPlanExplanation,
+    right: &EnrichmentPlanExplanation,
+) -> bool {
+    explanation_comparison(left, right).is_some_and(|comparison| comparison.1)
 }
 
 fn delta_from_response(

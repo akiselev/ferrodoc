@@ -15,6 +15,9 @@ The phase boundary is deliberate:
 - [`FDX4_DURABLE_STATE_REUSE.md`](FDX4_DURABLE_STATE_REUSE.md) defines the implemented runtime
   provider seam, immutable delta/state/checkpoint persistence, state-aware cross-worker reuse,
   checkpoint policy hooks, canonical replay equivalence, and exact storage accounting.
+- [`FDX5_EXPLAINABLE_PARETO.md`](FDX5_EXPLAINABLE_PARETO.md) defines hard-admitted local
+  alternatives, fixed-point value/quality/cost uncertainty, cache and prerequisite explanations,
+  targeted-versus-whole-document escalation, and conservative Pareto retention.
 
 FP0/FDX0 does not define electronics predicates, quantities, regimes, training policy, Artifactum storage, or a corpus scheduler. Those remain owned by Datasheet-cli and Foundry.
 
