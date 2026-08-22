@@ -509,7 +509,7 @@ fn model_backed_scan_and_hybrid_when_models_are_provided() {
     );
     assert_eq!(
         String::from_utf8(scan.stdout).unwrap(),
-        "SCANNED FERRODOC PAGE\nOptical text survives the CPU path.\n"
+        "# SCANNED FERRODOC PAGE\n\nOptical text survives the CPU path.\n"
     );
 
     let hybrid = Command::new(env!("CARGO_BIN_EXE_ferrodoc"))
