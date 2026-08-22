@@ -11,6 +11,7 @@ use thiserror::Error;
 use crate::cache::{CacheError, CacheHit, CacheKeyParts, Cacheability, StageCache};
 
 const STORE_VERSION: &str = "1";
+const EVIDENCE_DELTA_MEDIA_TYPE: &str = "application/vnd.ferrodoc.evidence-delta+json;version=1";
 /// Maximum canonical delta/manifest/checkpoint artifact accepted by the reference provider.
 pub const MAX_DURABLE_ARTIFACT_BYTES: u64 = 512 * 1024 * 1024;
 
@@ -297,7 +298,7 @@ impl DurableStateStore {
         self.persist(
             DurableArtifactKind::EvidenceDelta,
             delta.id()?.to_string(),
-            "application/vnd.ferrodoc.evidence-delta+json;version=1",
+            EVIDENCE_DELTA_MEDIA_TYPE,
             &bytes,
         )
     }
@@ -389,6 +390,12 @@ impl DurableStateStore {
             return Ok(None);
         };
         self.require_size(hit.bytes.len() as u64)?;
+        if hit.media_type != EVIDENCE_DELTA_MEDIA_TYPE {
+            return Err(DurableError::Invalid {
+                artifact_id: ArtifactId::derive(&[b"ferrodoc-invalid-refinement"]),
+                reason: "refinement cache has the wrong representation".into(),
+            });
+        }
         self.delta_from_hit(hit).map(Some)
     }
 
@@ -405,7 +412,7 @@ impl DurableStateStore {
             DurableNamespace::Refinements,
             key,
             cacheability,
-            "application/vnd.ferrodoc.evidence-delta+json;version=1",
+            EVIDENCE_DELTA_MEDIA_TYPE,
             &bytes,
         )?;
         Ok(())

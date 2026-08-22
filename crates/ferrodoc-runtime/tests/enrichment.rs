@@ -1030,7 +1030,7 @@ fn durable_physical_realizations_are_nonsemantic_and_fail_closed() {
         outcome => panic!("unexpected plan: {outcome:?}"),
     };
     let execution = runtime
-        .execute(&request, &plan, bytes, &document, &manifest)
+        .execute(&request, &plan, bytes.clone(), &document, &manifest)
         .unwrap();
     let artifacts = execution.durable_artifacts.unwrap();
     let store = DurableStateStore::open(durable_root.path()).unwrap();
@@ -1064,6 +1064,34 @@ fn durable_physical_realizations_are_nonsemantic_and_fail_closed() {
     assert!(matches!(
         store.load_manifest(&stale),
         Err(DurableError::Invalid { .. })
+    ));
+
+    // A backend must not be able to relabel arbitrary canonical JSON as a refinement delta.
+    let refinement_metadata =
+        std::fs::read_dir(durable_root.path().join("refinements").join("entries"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path()
+            .join("metadata.json");
+    let mut metadata: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&refinement_metadata).unwrap()).unwrap();
+    metadata["media_type"] = serde_json::json!("application/octet-stream");
+    std::fs::write(
+        &refinement_metadata,
+        serde_json::to_vec_pretty(&metadata).unwrap(),
+    )
+    .unwrap();
+    let mut relabeled = fixture_runtime(Arc::new(Mutex::new(Vec::new())))
+        .with_durable_store(DurableStateStore::open(durable_root.path()).unwrap());
+    let relabeled_plan = match relabeled.plan(&request, &document, &manifest).unwrap() {
+        EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
+        outcome => panic!("unexpected plan: {outcome:?}"),
+    };
+    assert!(matches!(
+        relabeled.execute(&request, &relabeled_plan, bytes, &document, &manifest),
+        Err(RuntimeError::Durable(DurableError::Invalid { .. }))
     ));
 
     // Locate this checkpoint's content entry through its validated metadata, then corrupt it.

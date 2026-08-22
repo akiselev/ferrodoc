@@ -28,6 +28,7 @@ pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MAX_ROWS: usize = 4_096;
 const MAX_COLUMNS: usize = 256;
 const MAX_CELLS: usize = 65_536;
+const PARSER_WORKING_SET_BYTES: u64 = 32 * Bytes::MIB;
 type ParsedCell = (String, usize, usize);
 
 /// Always-available CPU engine for the bounded delimiter grammar.
@@ -81,12 +82,15 @@ impl Engine for RuleBasedTableEngine {
     ) -> Result<Vec<EngineCandidate>, EngineError> {
         require_request(request)?;
         let _ = source_text_evidence(request)?;
+        let peak_ram = Bytes::new(request.input.range.len())
+            .checked_add(Bytes::new(PARSER_WORKING_SET_BYTES))
+            .map_err(|_| resource("table memory estimate overflow"))?;
         Ok(vec![EngineCandidate {
             engine_id: ENGINE_ID.into(),
             backend: BackendId::new("rules").expect("static backend"),
             device: DeviceId::new(DeviceKind::Cpu, None).expect("static device"),
             resources: ResourceEstimate {
-                peak_ram: Estimate::Known(Bytes::new(8 * Bytes::MIB)),
+                peak_ram: Estimate::Known(peak_ram),
                 warm_ram: Estimate::Known(Bytes::new(0)),
                 peak_vram: Estimate::Known(Bytes::new(0)),
                 warm_vram: Estimate::Known(Bytes::new(0)),
@@ -109,6 +113,11 @@ impl Engine for RuleBasedTableEngine {
         require_request(&request)?;
         context.checkpoint()?;
         let source_pdf = context.blobs.resolve(&request.input)?;
+        let input_digest = request
+            .input
+            .expected_digest
+            .unwrap_or_else(|| Sha256Digest::of_bytes(&source_pdf));
+        drop(source_pdf);
         let sources = source_text_evidence(&request)?;
         let page_index = request.page_index.expect("validated atomic table request");
         if sources.iter().any(|source| {
@@ -122,10 +131,6 @@ impl Engine for RuleBasedTableEngine {
                 "source text geometry differs from its page-qualified target",
             ));
         }
-        let input_digest = request
-            .input
-            .expected_digest
-            .unwrap_or_else(|| Sha256Digest::of_bytes(&source_pdf));
         let provenance = DeterministicProvenance {
             schema_version: CURRENT_SCHEMA_VERSION,
             input_digest,
@@ -203,6 +208,7 @@ fn parse_table(
     source: &SourceTextEvidence,
 ) -> Result<Option<(u32, u32, Vec<TableCell>)>, EngineError> {
     let mut parsed_rows = Vec::new();
+    let mut parsed_cells = 0_usize;
     let mut line_start = 0_usize;
     for line_with_ending in source.text.split_inclusive('\n') {
         let line = line_with_ending
@@ -213,6 +219,12 @@ fn parse_table(
             let Some(cells) = parse_row(line, line_start)? else {
                 return Ok(None);
             };
+            parsed_cells = parsed_cells
+                .checked_add(cells.len())
+                .ok_or_else(|| resource("table cell count overflow"))?;
+            if parsed_rows.len() == MAX_ROWS || parsed_cells > MAX_CELLS {
+                return Ok(None);
+            }
             parsed_rows.push(cells);
         }
         line_start = line_start
@@ -263,26 +275,19 @@ fn parse_table(
 }
 
 fn parse_row(line: &str, line_start: usize) -> Result<Option<Vec<ParsedCell>>, EngineError> {
-    let delimiters = line
-        .match_indices('|')
-        .map(|(index, _)| index)
-        .collect::<Vec<_>>();
-    if delimiters.is_empty() {
+    let mut delimiters = line.match_indices('|').map(|(index, _)| index).peekable();
+    if delimiters.peek().is_none() {
         return Ok(None);
     }
-    let mut boundaries = Vec::with_capacity(delimiters.len() + 2);
-    boundaries.push(0);
-    boundaries.extend(delimiters.iter().map(|index| index + 1));
-    boundaries.push(line.len() + 1);
-    let mut cells = Vec::new();
-    for pair in boundaries.windows(2) {
-        let raw_start = pair[0];
-        let raw_end = pair[1] - 1;
+    let mut cells = Vec::with_capacity(MAX_COLUMNS.min(16));
+    let mut raw_start = 0_usize;
+    for raw_end in delimiters.chain(std::iter::once(line.len())) {
         let raw = &line[raw_start..raw_end];
         if raw.trim().is_empty() {
-            if (raw_start == 0 && delimiters.first() == Some(&0))
-                || (raw_end == line.len() && delimiters.last() == Some(&(line.len() - 1)))
+            if (raw_start == 0 && raw_end == 0)
+                || (raw_start == line.len() && raw_end == line.len())
             {
+                raw_start = raw_end.saturating_add(1);
                 continue;
             }
             return Ok(None);
@@ -298,6 +303,10 @@ fn parse_row(line: &str, line_start: usize) -> Result<Option<Vec<ParsedCell>>, E
             .checked_add(end)
             .ok_or_else(|| resource("source offset overflow"))?;
         cells.push((line[start..end].to_owned(), absolute_start, absolute_end));
+        if cells.len() > MAX_COLUMNS {
+            return Ok(None);
+        }
+        raw_start = raw_end.saturating_add(1);
     }
     Ok((cells.len() >= 2).then_some(cells))
 }
@@ -361,5 +370,22 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn structural_limits_refuse_before_accumulating_unbounded_rows_or_cells() {
+        let overwide = std::iter::repeat_n("x", MAX_COLUMNS + 1)
+            .collect::<Vec<_>>()
+            .join("|");
+        assert!(parse_row(&overwide, 0).unwrap().is_none());
+
+        let too_many_rows = "a|b\n".repeat(MAX_ROWS + 1);
+        assert!(parse_table(&source(&too_many_rows)).unwrap().is_none());
+
+        let maximum_width = std::iter::repeat_n("x", MAX_COLUMNS)
+            .collect::<Vec<_>>()
+            .join("|");
+        let too_many_cells = format!("{}\n", maximum_width).repeat(MAX_CELLS / MAX_COLUMNS + 1);
+        assert!(parse_table(&source(&too_many_cells)).unwrap().is_none());
     }
 }
