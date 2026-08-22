@@ -7,7 +7,7 @@ use std::{
 
 use ferrodoc_core::{
     ArtifactId, Capability, DeviceKind, DocumentStateId, EstimateConfidence, EstimateSource,
-    LayerId, PageId, RequestId, ScopedBlob, Sha256Digest, Stage,
+    LayerId, MicroUsd, Millis, PageId, RequestId, ScopedBlob, Sha256Digest, Stage,
 };
 use ferrodoc_engine_api::{
     Engine, EngineCandidate, EngineRequest, HardwareInventory, NetworkUse,
@@ -69,6 +69,9 @@ pub struct EnrichmentStageDescriptor {
     /// Immutable model identity, when this registered stage uses a model.
     #[serde(default)]
     pub model_digest: Option<Sha256Digest>,
+    /// Normalized semantic engine parameters included in plan, cache, and evidence identity.
+    #[serde(default)]
+    pub parameters: BTreeMap<String, serde_json::Value>,
     /// Capability this stage produces.
     pub produces: Capability,
     /// Capabilities that must already be complete over the same scope.
@@ -438,9 +441,14 @@ impl EnrichmentRuntime {
                 .descriptor()
                 .capabilities
                 .contains(&descriptor.produces)
+            || descriptor.parameters.contains_key("ferrodoc.scope")
+            || descriptor
+                .parameters
+                .contains_key(SOURCE_TEXT_EVIDENCE_PARAMETER)
         {
             return Err(RuntimeError::InvalidEnrichment(
-                "stage ID is empty or its engine does not declare the produced capability".into(),
+                "stage ID/capability is invalid or normalized config uses a reserved parameter"
+                    .into(),
             ));
         }
         if self.stages.contains_key(&descriptor.id) {
@@ -508,7 +516,7 @@ impl EnrichmentRuntime {
                     continue;
                 }
                 let page_index = scope_page_index(&execution_scope, document)?;
-                let mut parameters = BTreeMap::new();
+                let mut parameters = registered.descriptor.parameters.clone();
                 parameters.insert(
                     "ferrodoc.scope".into(),
                     serde_json::to_value(&execution_scope)
@@ -586,14 +594,28 @@ impl EnrichmentRuntime {
                 reasons.dedup();
                 return Ok(EnrichmentPlanningOutcome::NoAdmissiblePlan { reasons });
             }
-            goal_choices.sort_by(|left, right| {
-                (&left.stage_id, &left.engine_id).cmp(&(&right.stage_id, &right.engine_id))
+            goal_choices.sort_by_key(invocation_semantic_key);
+            goal_choices.dedup_by(|left, right| {
+                invocation_semantic_key(left) == invocation_semantic_key(right)
             });
             choices.push(goal_choices);
         }
 
         let mut combinations = vec![Vec::new()];
         for alternatives in choices {
+            let prospective = combinations
+                .len()
+                .checked_mul(alternatives.len())
+                .ok_or_else(|| {
+                    RuntimeError::InvalidEnrichment(
+                        "candidate frontier combination count overflow".into(),
+                    )
+                })?;
+            if prospective > MAX_PARETO_PLANS {
+                return Err(RuntimeError::InvalidEnrichment(format!(
+                    "candidate frontier exceeds the explicit {MAX_PARETO_PLANS}-plan bound"
+                )));
+            }
             combinations = combinations
                 .into_iter()
                 .flat_map(|prefix| {
@@ -609,11 +631,6 @@ impl EnrichmentRuntime {
                     })
                 })
                 .collect();
-            if combinations.len() > MAX_PARETO_PLANS {
-                return Err(RuntimeError::InvalidEnrichment(format!(
-                    "candidate frontier exceeds the explicit {MAX_PARETO_PLANS}-plan bound"
-                )));
-            }
         }
         let mut candidates = Vec::new();
         for mut invocations in combinations {
@@ -627,6 +644,10 @@ impl EnrichmentRuntime {
                     || !whole_document_capabilities.contains(&invocation.capability)
             });
             invocations.sort_by_key(invocation_semantic_key);
+            if let Some(reason) = aggregate_hard_admission(&invocations, &self.options)? {
+                reasons.push(reason);
+                continue;
+            }
             let plan_id = semantic_plan_id(request, manifest, &invocations)?;
             let explanation = self.explain_plan(request, manifest, &invocations)?;
             candidates.push(EnrichmentCandidatePlan {
@@ -639,16 +660,24 @@ impl EnrichmentRuntime {
         }
         candidates.sort_by_key(|plan| plan.plan_id);
         candidates.dedup_by_key(|plan| plan.plan_id);
-        let pareto = candidates
-            .iter()
-            .enumerate()
-            .filter(|(index, candidate)| {
-                !candidates.iter().enumerate().any(|(other_index, other)| {
-                    other_index != *index && plan_dominates(other, candidate)
-                })
-            })
-            .map(|(_, candidate)| candidate.clone())
-            .collect();
+        if candidates.is_empty() {
+            reasons.sort();
+            reasons.dedup();
+            return Ok(EnrichmentPlanningOutcome::NoAdmissiblePlan { reasons });
+        }
+        let mut pareto = Vec::new();
+        for (index, candidate) in candidates.iter().enumerate() {
+            let mut dominated = false;
+            for (other_index, other) in candidates.iter().enumerate() {
+                if other_index != index && plan_dominates(other, candidate)? {
+                    dominated = true;
+                    break;
+                }
+            }
+            if !dominated {
+                pareto.push(candidate.clone());
+            }
+        }
         Ok(EnrichmentPlanningOutcome::CandidatePlans { pareto })
     }
 
@@ -755,14 +784,10 @@ impl EnrichmentRuntime {
                 state: cache_state,
             });
             if matches!(stage.planning.scope_policy, StageScopePolicy::WholeDocument)
-                && !matches!(
-                    request
-                        .goals
-                        .iter()
-                        .find(|goal| goal.capability == invocation.capability)
-                        .map(|goal| &goal.scope),
-                    Some(RefinementScope::Document)
-                )
+                && !request.goals.iter().any(|goal| {
+                    goal.capability == invocation.capability
+                        && matches!(goal.scope, RefinementScope::Document)
+                })
             {
                 escalations.push(PlanEscalation::WholeDocumentForNarrowGoal {
                     stage_id: stage.descriptor.id.clone(),
@@ -820,6 +845,7 @@ impl EnrichmentRuntime {
             }
         }
         escalations.sort_by_key(|item| serde_json::to_string(item).unwrap_or_default());
+        escalations.dedup();
         Ok(EnrichmentPlanExplanation {
             stage_profiles,
             capability_gain_bps,
@@ -855,11 +881,14 @@ impl EnrichmentRuntime {
             EnrichmentPlanningOutcome::CandidatePlans { pareto } => pareto,
             _ => Vec::new(),
         };
-        if !offered.iter().any(|candidate| candidate == plan) {
-            return Err(RuntimeError::InvalidEnrichment(
-                "selected plan is not in the current admissible frontier".into(),
-            ));
-        }
+        let plan = offered
+            .iter()
+            .find(|candidate| candidate.plan_id == plan.plan_id)
+            .ok_or_else(|| {
+                RuntimeError::InvalidEnrichment(
+                    "selected semantic plan is not in the current admissible frontier".into(),
+                )
+            })?;
         let resolver = OneBlob::from_scoped(request.source.clone(), source_bytes)?;
         let mut resource_runtime = ResourceRuntime::new(
             self.options.clone(),
@@ -1421,6 +1450,74 @@ fn scope_label(scope: &RefinementScope) -> &'static str {
     }
 }
 
+fn aggregate_hard_admission(
+    invocations: &[EnrichmentInvocation],
+    options: &ConversionOptions,
+) -> Result<Option<String>, RuntimeError> {
+    for (label, values, limit) in [
+        (
+            "remote cost",
+            invocations
+                .iter()
+                .map(|item| {
+                    item.candidate
+                        .resources
+                        .remote_cost
+                        .known()
+                        .map(|value| value.get())
+                })
+                .collect::<Vec<_>>(),
+            options.max_remote_cost.map(MicroUsd::get),
+        ),
+        (
+            "latency",
+            invocations
+                .iter()
+                .map(|item| {
+                    item.candidate
+                        .resources
+                        .latency
+                        .known()
+                        .map(|value| value.get())
+                })
+                .collect::<Vec<_>>(),
+            options.deadline.map(Millis::get),
+        ),
+    ] {
+        let Some(limit) = limit else { continue };
+        let Some(total) = checked_known_sum(values, label)? else {
+            if options.allow_unknown_hard_estimates {
+                continue;
+            }
+            return Ok(Some(format!(
+                "complete-plan {label} is unknown under hard limit {limit}"
+            )));
+        };
+        if total > limit {
+            return Ok(Some(format!(
+                "complete-plan {label} {total} exceeds hard limit {limit}"
+            )));
+        }
+    }
+    Ok(None)
+}
+
+fn checked_known_sum(values: Vec<Option<u64>>, label: &str) -> Result<Option<u64>, RuntimeError> {
+    values
+        .into_iter()
+        .collect::<Option<Vec<_>>>()
+        .map(|values| {
+            values.into_iter().try_fold(0_u64, |total, value| {
+                total.checked_add(value).ok_or_else(|| {
+                    RuntimeError::InvalidEnrichment(format!(
+                        "complete-plan {label} estimate overflow"
+                    ))
+                })
+            })
+        })
+        .transpose()
+}
+
 #[derive(Clone, Copy)]
 struct PlanMetrics {
     peak_ram: Option<u64>,
@@ -1429,10 +1526,9 @@ struct PlanMetrics {
     warm_vram: Option<u64>,
     latency: Option<u64>,
     remote_cost: Option<u64>,
-    quality_bps: Option<u64>,
 }
 
-fn plan_metrics(plan: &EnrichmentCandidatePlan) -> PlanMetrics {
+fn plan_metrics(plan: &EnrichmentCandidatePlan) -> Result<PlanMetrics, RuntimeError> {
     let estimates = plan
         .invocations
         .iter()
@@ -1444,17 +1540,7 @@ fn plan_metrics(plan: &EnrichmentCandidatePlan) -> PlanMetrics {
             .collect::<Option<Vec<_>>>()
             .and_then(|values| values.into_iter().max())
     };
-    let sum = |values: Vec<Option<u64>>| {
-        values
-            .into_iter()
-            .collect::<Option<Vec<_>>>()
-            .map(|values| {
-                values
-                    .into_iter()
-                    .fold(0_u64, |total, value| total.saturating_add(value))
-            })
-    };
-    PlanMetrics {
+    Ok(PlanMetrics {
         peak_ram: maximum(
             estimates
                 .iter()
@@ -1479,30 +1565,29 @@ fn plan_metrics(plan: &EnrichmentCandidatePlan) -> PlanMetrics {
                 .map(|item| item.warm_vram.known().map(|value| value.get()))
                 .collect(),
         ),
-        latency: sum(estimates
-            .iter()
-            .map(|item| item.latency.known().map(|value| value.get()))
-            .collect()),
-        remote_cost: sum(estimates
-            .iter()
-            .map(|item| item.remote_cost.known().map(|value| value.get()))
-            .collect()),
-        quality_bps: estimates
-            .iter()
-            .map(|item| item.quality.known().map(|value| value.get()))
-            .collect::<Option<Vec<_>>>()
-            .and_then(|values| {
-                values
-                    .into_iter()
-                    .map(|value| (value * 10_000.0).round() as u64)
-                    .reduce(u64::min)
-            }),
-    }
+        latency: checked_known_sum(
+            estimates
+                .iter()
+                .map(|item| item.latency.known().map(|value| value.get()))
+                .collect(),
+            "latency",
+        )?,
+        remote_cost: checked_known_sum(
+            estimates
+                .iter()
+                .map(|item| item.remote_cost.known().map(|value| value.get()))
+                .collect(),
+            "remote cost",
+        )?,
+    })
 }
 
-fn plan_dominates(left: &EnrichmentCandidatePlan, right: &EnrichmentCandidatePlan) -> bool {
-    let left_metrics = plan_metrics(left);
-    let right_metrics = plan_metrics(right);
+fn plan_dominates(
+    left: &EnrichmentCandidatePlan,
+    right: &EnrichmentCandidatePlan,
+) -> Result<bool, RuntimeError> {
+    let left_metrics = plan_metrics(left)?;
+    let right_metrics = plan_metrics(right)?;
     let costs = [
         (left_metrics.peak_ram, right_metrics.peak_ram),
         (left_metrics.warm_ram, right_metrics.warm_ram),
@@ -1511,22 +1596,17 @@ fn plan_dominates(left: &EnrichmentCandidatePlan, right: &EnrichmentCandidatePla
         (left_metrics.latency, right_metrics.latency),
         (left_metrics.remote_cost, right_metrics.remote_cost),
     ];
-    let Some(quality) = left_metrics.quality_bps.zip(right_metrics.quality_bps) else {
-        return false;
-    };
     if costs
         .iter()
         .any(|(left, right)| left.zip(*right).is_none_or(|(left, right)| left > right))
-        || quality.0 < quality.1
         || !explanation_no_worse(&left.explanation, &right.explanation)
     {
-        return false;
+        return Ok(false);
     }
-    costs
+    Ok(costs
         .iter()
         .any(|(left, right)| left.zip(*right).is_some_and(|(left, right)| left < right))
-        || quality.0 > quality.1
-        || explanation_strictly_better(&left.explanation, &right.explanation)
+        || explanation_strictly_better(&left.explanation, &right.explanation))
 }
 
 fn conservative_higher(left: &PlanningEstimate, right: &PlanningEstimate) -> Option<(bool, bool)> {

@@ -37,6 +37,7 @@ struct ScopedTableEngine {
     latency: u64,
     quality: Option<Probability>,
     vram: Estimate<Bytes>,
+    remote_cost: u64,
     wrong_content: bool,
 }
 
@@ -68,12 +69,18 @@ impl ScopedTableEngine {
             latency,
             quality: quality.map(|value| Probability::new(value).unwrap()),
             vram: Estimate::Known(Bytes::new(0)),
+            remote_cost: 0,
             wrong_content: false,
         }
     }
 
     fn with_vram(mut self, vram: Estimate<Bytes>) -> Self {
         self.vram = vram;
+        self
+    }
+
+    fn with_remote_cost(mut self, remote_cost: u64) -> Self {
+        self.remote_cost = remote_cost;
         self
     }
 }
@@ -107,7 +114,7 @@ impl Engine for ScopedTableEngine {
                 peak_vram: self.vram.clone(),
                 warm_vram: Estimate::Known(Bytes::new(0)),
                 latency: Estimate::Known(Millis::new(self.latency)),
-                remote_cost: Estimate::Known(MicroUsd::new(0)),
+                remote_cost: Estimate::Known(MicroUsd::new(self.remote_cost)),
                 quality: self.quality.map_or(Estimate::Unknown, Estimate::Known),
                 source: Estimate::Unknown,
             },
@@ -280,6 +287,7 @@ fn fixture_runtime(calls: Arc<Mutex<Vec<EngineRequest>>>) -> EnrichmentRuntime {
                 stage: Stage::Layout,
                 build: Sha256Digest::of_bytes(b"scoped-table-build-v1"),
                 model_digest: None,
+                parameters: BTreeMap::new(),
                 produces: Capability::TableRecognize,
                 requires: BTreeSet::new(),
             },
@@ -472,6 +480,7 @@ fn table_capability_rejects_non_table_engine_evidence() {
                 stage: Stage::Layout,
                 build: Sha256Digest::of_bytes(b"wrong-table-content"),
                 model_digest: None,
+                parameters: BTreeMap::new(),
                 produces: Capability::TableRecognize,
                 requires: BTreeSet::new(),
             },
@@ -506,6 +515,7 @@ fn declared_prerequisite_is_not_implicitly_executed() {
                 stage: Stage::Layout,
                 build: Sha256Digest::of_bytes(b"scoped-table-build-v1"),
                 model_digest: None,
+                parameters: BTreeMap::new(),
                 produces: Capability::TableRecognize,
                 requires: BTreeSet::from([Capability::LayoutDetect]),
             },
@@ -569,6 +579,7 @@ fn candidate_plans_remove_a_provably_dominated_alternative() {
                     stage: Stage::Layout,
                     build: Sha256Digest::of_bytes(engine_id.as_bytes()),
                     model_digest: None,
+                    parameters: BTreeMap::new(),
                     produces: Capability::TableRecognize,
                     requires: BTreeSet::new(),
                 },
@@ -614,6 +625,7 @@ fn pareto_retains_quality_cost_tradeoff_and_planning_does_not_execute() {
                     stage: Stage::Layout,
                     build: Sha256Digest::of_bytes(engine_id.as_bytes()),
                     model_digest: None,
+                    parameters: BTreeMap::new(),
                     produces: Capability::TableRecognize,
                     requires: BTreeSet::new(),
                 },
@@ -677,6 +689,7 @@ fn targeted_and_whole_document_alternatives_are_explainable_and_plan_id_is_seman
                     stage: Stage::Layout,
                     build: Sha256Digest::of_bytes(engine_id.as_bytes()),
                     model_digest: None,
+                    parameters: BTreeMap::new(),
                     produces: Capability::TableRecognize,
                     requires: BTreeSet::new(),
                 },
@@ -743,6 +756,7 @@ fn unknown_planning_dimensions_make_dominance_indeterminate() {
                     stage: Stage::Layout,
                     build: Sha256Digest::of_bytes(engine_id.as_bytes()),
                     model_digest: None,
+                    parameters: BTreeMap::new(),
                     produces: Capability::TableRecognize,
                     requires: BTreeSet::new(),
                 },
@@ -792,6 +806,7 @@ fn enrichment_low_vram_hard_gate_refuses_excess_and_unknown_without_fallback() {
                     stage: Stage::Layout,
                     build: Sha256Digest::of_bytes(engine_id.as_bytes()),
                     model_digest: None,
+                    parameters: BTreeMap::new(),
                     produces: Capability::TableRecognize,
                     requires: BTreeSet::new(),
                 },
@@ -807,6 +822,286 @@ fn enrichment_low_vram_hard_gate_refuses_excess_and_unknown_without_fallback() {
         assert!(reasons.iter().any(|reason| reason.contains(expected)));
         assert!(calls.lock().unwrap().is_empty());
     }
+}
+
+#[test]
+fn complete_plan_cost_and_deadline_are_hard_budgets() {
+    let (bytes, document, manifest, targets) = fixture();
+    let request = request(&bytes, &manifest, targets.iter().cloned().collect());
+    for (cost_limit, deadline, expected) in [
+        (
+            Some(MicroUsd::new(10)),
+            None,
+            "complete-plan remote cost 12",
+        ),
+        (None, Some(Millis::new(10)), "complete-plan latency 12"),
+    ] {
+        let mut runtime = EnrichmentRuntime::new(
+            ConversionOptions {
+                profile: Profile::Offline,
+                max_remote_cost: cost_limit,
+                deadline,
+                ..ConversionOptions::default()
+            },
+            unknown_inventory(),
+            None,
+        );
+        runtime
+            .register_stage_with_planning(
+                EnrichmentStageDescriptor {
+                    id: "table.budgeted".into(),
+                    stage: Stage::Layout,
+                    build: Sha256Digest::of_bytes(b"budgeted"),
+                    model_digest: None,
+                    parameters: BTreeMap::new(),
+                    produces: Capability::TableRecognize,
+                    requires: BTreeSet::new(),
+                },
+                measured_planning(8_000, 6, StageScopePolicy::Requested),
+                ScopedTableEngine::with_estimate(
+                    Arc::new(Mutex::new(Vec::new())),
+                    "budgeted",
+                    6,
+                    Some(0.8),
+                )
+                .with_remote_cost(6),
+            )
+            .unwrap();
+        let EnrichmentPlanningOutcome::NoAdmissiblePlan { reasons } =
+            runtime.plan(&request, &document, &manifest).unwrap()
+        else {
+            panic!("complete plan must be refused")
+        };
+        assert!(reasons.iter().any(|reason| reason.contains(expected)));
+    }
+}
+
+#[test]
+fn complete_plan_resource_overflow_fails_closed() {
+    let (bytes, document, manifest, targets) = fixture();
+    let request = request(&bytes, &manifest, targets.iter().cloned().collect());
+    let mut runtime = EnrichmentRuntime::new(
+        ConversionOptions {
+            profile: Profile::Offline,
+            max_remote_cost: Some(MicroUsd::new(u64::MAX)),
+            ..ConversionOptions::default()
+        },
+        unknown_inventory(),
+        None,
+    );
+    runtime
+        .register_stage_with_planning(
+            EnrichmentStageDescriptor {
+                id: "table.overflow".into(),
+                stage: Stage::Layout,
+                build: Sha256Digest::of_bytes(b"overflow"),
+                model_digest: None,
+                parameters: BTreeMap::new(),
+                produces: Capability::TableRecognize,
+                requires: BTreeSet::new(),
+            },
+            measured_planning(8_000, 1, StageScopePolicy::Requested),
+            ScopedTableEngine::with_estimate(
+                Arc::new(Mutex::new(Vec::new())),
+                "overflow",
+                1,
+                Some(0.8),
+            )
+            .with_remote_cost(u64::MAX),
+        )
+        .unwrap();
+    assert!(matches!(
+        runtime.plan(&request, &document, &manifest),
+        Err(RuntimeError::InvalidEnrichment(message)) if message.contains("overflow")
+    ));
+}
+
+#[test]
+fn candidate_frontier_refuses_expansion_beyond_explicit_bound() {
+    let (bytes, document, manifest, targets) = fixture();
+    let request = request(&bytes, &manifest, BTreeSet::from([targets[0].clone()]));
+    let mut runtime = EnrichmentRuntime::new(
+        ConversionOptions {
+            profile: Profile::Offline,
+            ..ConversionOptions::default()
+        },
+        unknown_inventory(),
+        None,
+    );
+    for index in 0..65 {
+        let id = format!("table.bound-{index:02}");
+        runtime
+            .register_stage_with_planning(
+                EnrichmentStageDescriptor {
+                    id: id.clone(),
+                    stage: Stage::Layout,
+                    build: Sha256Digest::of_bytes(id.as_bytes()),
+                    model_digest: None,
+                    parameters: BTreeMap::new(),
+                    produces: Capability::TableRecognize,
+                    requires: BTreeSet::new(),
+                },
+                measured_planning(8_000, 1, StageScopePolicy::Requested),
+                ScopedTableEngine::with_estimate(
+                    Arc::new(Mutex::new(Vec::new())),
+                    &id,
+                    1,
+                    Some(0.8),
+                ),
+            )
+            .unwrap();
+    }
+    assert!(matches!(
+        runtime.plan(&request, &document, &manifest),
+        Err(RuntimeError::InvalidEnrichment(message)) if message.contains("64-plan bound")
+    ));
+}
+
+#[test]
+fn pareto_ties_ignore_floating_engine_quality_diagnostics() {
+    let (bytes, document, manifest, targets) = fixture();
+    let request = request(&bytes, &manifest, BTreeSet::from([targets[0].clone()]));
+    let mut runtime = EnrichmentRuntime::new(
+        ConversionOptions {
+            profile: Profile::Offline,
+            ..ConversionOptions::default()
+        },
+        unknown_inventory(),
+        None,
+    );
+    for (stage_id, quality) in [("table.high-float", 0.99), ("table.low-float", 0.01)] {
+        runtime
+            .register_stage_with_planning(
+                EnrichmentStageDescriptor {
+                    id: stage_id.into(),
+                    stage: Stage::Layout,
+                    build: Sha256Digest::of_bytes(stage_id.as_bytes()),
+                    model_digest: None,
+                    parameters: BTreeMap::new(),
+                    produces: Capability::TableRecognize,
+                    requires: BTreeSet::new(),
+                },
+                measured_planning(8_000, 1, StageScopePolicy::Requested),
+                ScopedTableEngine::with_estimate(
+                    Arc::new(Mutex::new(Vec::new())),
+                    stage_id,
+                    1,
+                    Some(quality),
+                ),
+            )
+            .unwrap();
+    }
+    let EnrichmentPlanningOutcome::CandidatePlans { pareto } =
+        runtime.plan(&request, &document, &manifest).unwrap()
+    else {
+        panic!("expected plans")
+    };
+    assert_eq!(pareto.len(), 2, "fixed-point ties must both remain");
+}
+
+#[test]
+fn plan_identity_binds_model_and_normalized_stage_configuration() {
+    let (bytes, document, manifest, targets) = fixture();
+    let request = request(&bytes, &manifest, BTreeSet::from([targets[0].clone()]));
+    let plan_id = |model: Sha256Digest, mode: &str| {
+        let mut runtime = EnrichmentRuntime::new(
+            ConversionOptions {
+                profile: Profile::Offline,
+                ..ConversionOptions::default()
+            },
+            unknown_inventory(),
+            None,
+        );
+        runtime
+            .register_stage_with_planning(
+                EnrichmentStageDescriptor {
+                    id: "table.identity".into(),
+                    stage: Stage::Layout,
+                    build: Sha256Digest::of_bytes(b"same-build"),
+                    model_digest: Some(model),
+                    parameters: BTreeMap::from([("mode".into(), serde_json::json!(mode))]),
+                    produces: Capability::TableRecognize,
+                    requires: BTreeSet::new(),
+                },
+                measured_planning(8_000, 1, StageScopePolicy::Requested),
+                ScopedTableEngine::with_estimate(
+                    Arc::new(Mutex::new(Vec::new())),
+                    "identity",
+                    1,
+                    Some(0.8),
+                ),
+            )
+            .unwrap();
+        let EnrichmentPlanningOutcome::CandidatePlans { pareto } =
+            runtime.plan(&request, &document, &manifest).unwrap()
+        else {
+            panic!("expected plan")
+        };
+        pareto[0].plan_id
+    };
+    let model_a = Sha256Digest::of_bytes(b"model-a");
+    assert_ne!(plan_id(model_a, "a"), plan_id(model_a, "b"));
+    assert_ne!(
+        plan_id(model_a, "a"),
+        plan_id(Sha256Digest::of_bytes(b"model-b"), "a")
+    );
+}
+
+#[test]
+fn explicit_document_goal_makes_whole_document_explanation_order_independent() {
+    let (bytes, document, manifest, targets) = fixture();
+    let mut request = request(&bytes, &manifest, BTreeSet::from([targets[0].clone()]));
+    request.goals.push(CapabilityGoal {
+        capability: Capability::TableRecognize,
+        scope: RefinementScope::Document,
+    });
+    let mut runtime = EnrichmentRuntime::new(
+        ConversionOptions {
+            profile: Profile::Offline,
+            ..ConversionOptions::default()
+        },
+        unknown_inventory(),
+        None,
+    );
+    runtime
+        .register_stage_with_planning(
+            EnrichmentStageDescriptor {
+                id: "table.whole-order".into(),
+                stage: Stage::Layout,
+                build: Sha256Digest::of_bytes(b"whole-order"),
+                model_digest: None,
+                parameters: BTreeMap::new(),
+                produces: Capability::TableRecognize,
+                requires: BTreeSet::new(),
+            },
+            measured_planning(8_000, 1, StageScopePolicy::WholeDocument),
+            ScopedTableEngine::with_estimate(
+                Arc::new(Mutex::new(Vec::new())),
+                "whole-order",
+                1,
+                Some(0.8),
+            ),
+        )
+        .unwrap();
+    let EnrichmentPlanningOutcome::CandidatePlans { pareto: first } =
+        runtime.plan(&request, &document, &manifest).unwrap()
+    else {
+        panic!("expected plan")
+    };
+    request.goals.reverse();
+    let EnrichmentPlanningOutcome::CandidatePlans { pareto: second } =
+        runtime.plan(&request, &document, &manifest).unwrap()
+    else {
+        panic!("expected plan")
+    };
+    assert_eq!(first, second);
+    assert!(
+        !first[0]
+            .explanation
+            .escalations
+            .iter()
+            .any(|item| matches!(item, PlanEscalation::WholeDocumentForNarrowGoal { .. }))
+    );
 }
 
 #[test]
@@ -896,10 +1191,12 @@ fn durable_cold_warm_reuse_and_checkpoint_tail_replay_are_canonical() {
         EnrichmentPlanningOutcome::CandidatePlans { mut pareto } => pareto.remove(0),
         outcome => panic!("unexpected plan: {outcome:?}"),
     };
+    assert_eq!(warm_plan.plan_id, first_plan.plan_id);
+    assert_ne!(warm_plan.explanation, first_plan.explanation);
     let reused = warm
         .execute(
             &first_request,
-            &warm_plan,
+            &first_plan,
             bytes.clone(),
             &initial,
             &initial_manifest,

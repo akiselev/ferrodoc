@@ -18,10 +18,15 @@ Each returned `EnrichmentCandidatePlan` contains:
   reasons for whole-document work, accelerators, network-capable engines, cold cache,
   prerequisites, unknown estimates, and heuristic evidence.
 
+Hard remote-cost and deadline limits apply to the checked sum for the complete sequential plan,
+not independently to each stage. Overflow refuses the plan. Peak RAM/VRAM remains a peak bound
+because the reference executor runs invocations sequentially.
+
 Outcome estimates use integer basis points and resources use integer native units. Plan identity
 excludes the outer request ID, estimates, cache state, resource observations, and queue priority.
 It includes the source, logical input state, schema, stage/build/model, engine/version,
-backend/device, normalized parameters, seed, and semantic scope. Thus changed evidence or an
+backend/device, explicitly normalized stage parameters, seed, and semantic scope. Reserved
+Ferrodoc parameters cannot be supplied as stage configuration. Thus changed evidence or an
 execution choice changes identity, while refreshed measurements do not.
 
 ## Frontier semantics
@@ -32,6 +37,10 @@ conservatively no worse, and at least one dimension is strictly better. Overlapp
 an unknown dimension make dominance indeterminate, preserving the tradeoff. No scalar utility
 score or hidden tie-breaker selects a winner. Candidate explosion fails explicitly at the bounded
 64-plan contract rather than silently truncating the frontier.
+
+Only integer planning intervals determine quality dominance. A floating-point quality value may
+remain in an engine's raw resource diagnostic, but it cannot determine the replayable frontier.
+Integer resource sums use checked arithmetic, and exact ties remain separate Pareto alternatives.
 
 Stages declare whether they honor the requested page-qualified scope or require whole-document
 execution. Whole-document invocations are deduplicated across narrow atomic goals and reported as
