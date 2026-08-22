@@ -1,0 +1,3 @@
+/benchmarks/routing/*.json text eol=lf
+/benchmarks/routing/reports/*.json text eol=lf
+/benchmarks/routing/traces/*.json text eol=lf

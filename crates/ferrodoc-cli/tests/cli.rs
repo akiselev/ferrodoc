@@ -23,6 +23,28 @@ fn run(arguments: &[&str]) -> Output {
         .unwrap()
 }
 
+fn normalize_text_line_endings(bytes: &[u8]) -> Vec<u8> {
+    let mut normalized = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index..].starts_with(b"\r\n") {
+            normalized.push(b'\n');
+            index += 2;
+        } else {
+            normalized.push(bytes[index]);
+            index += 1;
+        }
+    }
+    normalized
+}
+
+fn assert_text_matches_golden(actual: &[u8], golden: &[u8]) {
+    assert_eq!(
+        normalize_text_line_endings(actual),
+        normalize_text_line_endings(golden)
+    );
+}
+
 #[test]
 fn reports_truthful_phase_status() {
     let output = run(&["status"]);
@@ -132,9 +154,9 @@ fn born_digital_markdown_matches_golden() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        output.stdout,
-        include_bytes!("../../../fixtures/golden/born-digital.md")
+    assert_text_matches_golden(
+        &output.stdout,
+        include_bytes!("../../../fixtures/golden/born-digital.md"),
     );
 }
 
@@ -184,10 +206,15 @@ fn output_file_is_replaced_with_complete_content() {
         .status()
         .unwrap();
     assert!(status.success());
-    assert_eq!(
-        fs::read(output_path).unwrap(),
-        include_bytes!("../../../fixtures/golden/born-digital.html")
+    assert_text_matches_golden(
+        &fs::read(output_path).unwrap(),
+        include_bytes!("../../../fixtures/golden/born-digital.html"),
     );
+}
+
+#[test]
+fn text_goldens_are_crlf_insensitive() {
+    assert_text_matches_golden(b"first\nsecond\n", b"first\r\nsecond\r\n");
 }
 
 #[test]
