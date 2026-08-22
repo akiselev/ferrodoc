@@ -18,6 +18,8 @@ Health, estimate, execute, ping, cancellation acknowledgement, and shutdown have
 
 Within protocol v1, additive optional fields may be accepted when Serde compatibility permits them. Removing a field, changing a field's semantics/type, changing framing, or changing blob-scope rules requires protocol v2. Hosts and engines with no common version refuse the connection; they never guess a downgrade.
 
+`EngineRequest.scope` is the additive FP1 semantic execution scope: document, explicit pages, or page-qualified regions. It is absent for legacy v1 requests and mandatory for new `EnrichmentRuntime` invocations. Byte access remains independently constrained by the registered `ScopedBlob`; semantic scope does not grant a path, a wider byte range, or network access.
+
 ## Lifecycle bounds
 
 Startup, request, semantic deadline, cancellation polling, and graceful shutdown are bounded. A startup hang, execution hang, cancellation, malformed response, crash, or disconnected stream terminates and waits for the child. After termination the engine is unavailable until an explicit bounded restart. Drop attempts graceful shutdown and then kills as a final bound.
@@ -28,7 +30,7 @@ Startup, request, semantic deadline, cancellation polling, and graceful shutdown
 
 ## Conformance artifacts
 
-`fixtures/protocol/v1/` contains the exact valid hello/ping frames and malformed, oversized, and partial inputs. `schemas/protocol-request-v1.json` and `schemas/protocol-response-v1.json` snapshot the message envelopes. Regenerate them with:
+`fixtures/protocol/v1/` contains the exact valid hello/ping frames, legacy and scoped execute requests, and malformed, oversized, and partial inputs. `schemas/protocol-request-v1.json` and `schemas/protocol-response-v1.json` snapshot the message envelopes. Regenerate them with:
 
 ```bash
 cargo run -p ferrodoc-protocol --example export_fixtures

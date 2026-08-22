@@ -41,6 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             expected_digest: Some(digest),
         },
         page_index: Some(0),
+        scope: None,
         parameters: BTreeMap::from([
             ("width".into(), serde_json::json!(raster.width)),
             ("height".into(), serde_json::json!(raster.height)),

@@ -17,7 +17,7 @@ use ferrodoc_core::{
     BackendId, Bytes, Capability, DeviceId, DeviceKind, Estimate, EstimateSource, Millis,
     RequestId, ResourceEstimate, ScopedBlob,
 };
-use ferrodoc_ir::Evidence;
+use ferrodoc_ir::{Evidence, RefinementScope};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -194,6 +194,12 @@ pub struct EngineRequest {
     pub input: ScopedBlob,
     /// Optional zero-based page index.
     pub page_index: Option<u32>,
+    /// Semantic document/page/page-qualified-region scope.
+    ///
+    /// This is optional only for bounded compatibility with protocol-v1 callers that predate
+    /// progressive execution. New enrichment requests always provide it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<RefinementScope>,
     /// Normalized deterministic parameters.
     #[serde(default)]
     pub parameters: BTreeMap<String, serde_json::Value>,
@@ -405,5 +411,7 @@ mod tests {
         assert!(!schema.contains("\"path\""));
         assert!(schema.contains("BlobId"));
         assert!(schema.contains("BlobRange"));
+        assert!(schema.contains("RefinementScope"));
+        assert!(schema.contains("PageRegionRef"));
     }
 }

@@ -14,6 +14,7 @@ fn rule_based_engine_passes_common_conformance() {
         capability: Capability::LayoutDetect,
         input: scoped(&input, "text/plain"),
         page_index: Some(0),
+        scope: None,
         parameters: BTreeMap::from([
             ("page_width".into(), serde_json::json!(595.0)),
             ("page_height".into(), serde_json::json!(842.0)),

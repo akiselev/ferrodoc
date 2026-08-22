@@ -368,6 +368,7 @@ fn probe_request(
             expected_digest: Some(Sha256Digest::of_bytes(&[0])),
         },
         page_index: Some(0),
+        scope: None,
         parameters,
         deterministic_seed: None,
         deadline: None,

@@ -300,6 +300,7 @@ mod tests {
                 expected_digest: Some(Sha256Digest::of_bytes(&bytes)),
             },
             page_index: Some(0),
+            scope: None,
             parameters: BTreeMap::from([
                 ("page_width".into(), serde_json::json!(595.0)),
                 ("page_height".into(), serde_json::json!(842.0)),
@@ -334,6 +335,7 @@ mod tests {
                 expected_digest: Some(Sha256Digest::of_bytes(&bytes)),
             },
             page_index: Some(0),
+            scope: None,
             parameters: BTreeMap::from([
                 ("page_width".into(), serde_json::json!(558.0)),
                 ("page_height".into(), serde_json::json!(746.0)),
@@ -378,6 +380,7 @@ mod tests {
                 expected_digest: Some(Sha256Digest::of_bytes(&bytes)),
             },
             page_index: Some(0),
+            scope: None,
             parameters: BTreeMap::from([
                 ("page_width".into(), serde_json::json!(595.0)),
                 ("page_height".into(), serde_json::json!(842.0)),

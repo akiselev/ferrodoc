@@ -317,6 +317,7 @@ mod tests {
                 expected_digest: None,
             },
             page_index: Some(0),
+            scope: None,
             parameters: BTreeMap::new(),
             deterministic_seed: None,
             deadline: None,

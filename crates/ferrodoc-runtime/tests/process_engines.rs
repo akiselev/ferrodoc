@@ -1,7 +1,12 @@
-use std::{collections::BTreeMap, fs, path::PathBuf, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::PathBuf,
+    time::Duration,
+};
 
 use ferrodoc_core::{
-    BlobId, BlobRange, Capability, MediaType, RequestId, ScopedBlob, Sha256Digest,
+    BlobId, BlobRange, Capability, MediaType, PageId, RequestId, ScopedBlob, Sha256Digest,
 };
 use ferrodoc_engine_api::{
     BlobResolver, CancellationToken, Engine, EngineError, EngineRequest, ExecutionContext,
@@ -12,6 +17,7 @@ use ferrodoc_engine_command::{Argument, CommandConfig, CommandEngine};
 use ferrodoc_engine_ocrs::{OcrsEngine, RGBA8_MEDIA_TYPE};
 #[cfg(feature = "tesseract")]
 use ferrodoc_engine_tesseract::TesseractEngine;
+use ferrodoc_ir::RefinementScope;
 use ferrodoc_layout_rulebased::RuleBasedLayoutEngine;
 use ferrodoc_pdf::{PdfDocument, PdfLimits};
 use ferrodoc_runtime::{PluginCommand, ProcessConfig, ProcessEngine};
@@ -59,6 +65,9 @@ fn layout_wrapper_matches_embedded_when_binary_is_provided() {
         capability: Capability::LayoutDetect,
         input: scoped(&bytes, "layout-input", "text/plain"),
         page_index: Some(0),
+        scope: Some(RefinementScope::Pages {
+            page_ids: BTreeSet::from([PageId::derive(&[b"layout-page-0"])]),
+        }),
         parameters: BTreeMap::from([
             ("page_width".into(), serde_json::json!(595.0)),
             ("page_height".into(), serde_json::json!(842.0)),
@@ -100,6 +109,7 @@ fn ocrs_wrapper_matches_embedded_when_binary_and_models_are_provided() {
         capability: Capability::OcrPage,
         input: scoped(&raster.rgba, "ocrs-input", RGBA8_MEDIA_TYPE),
         page_index: Some(0),
+        scope: None,
         parameters: BTreeMap::from([
             ("width".into(), serde_json::json!(raster.width)),
             ("height".into(), serde_json::json!(raster.height)),
@@ -142,6 +152,7 @@ fn tesseract_wrapper_matches_embedded_when_binary_and_dependency_are_provided() 
         capability: Capability::OcrPage,
         input: scoped(&raster.rgba, "tesseract-input", RGBA8_MEDIA_TYPE),
         page_index: Some(0),
+        scope: None,
         parameters: BTreeMap::from([
             ("width".into(), serde_json::json!(raster.width)),
             ("height".into(), serde_json::json!(raster.height)),
@@ -190,6 +201,7 @@ fn experimental_command_wrapper_matches_embedded_without_a_shell() {
         capability: Capability::OcrPage,
         input: scoped(&bytes, "command-input", "text/plain"),
         page_index: Some(0),
+        scope: None,
         parameters: BTreeMap::new(),
         deterministic_seed: None,
         deadline: None,

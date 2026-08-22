@@ -242,6 +242,17 @@
               "$ref": "#/definitions/RequestId"
             }
           ]
+        },
+        "scope": {
+          "description": "Semantic document/page/page-qualified-region scope.\n\nThis is optional only for bounded compatibility with protocol-v1 callers that predate progressive execution. New enrichment requests always provide it.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RefinementScope"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -726,6 +737,104 @@
       ]
     },
     "MediaType": {
+      "type": "string"
+    },
+    "PageId": {
+      "type": "string"
+    },
+    "PageRegionRef": {
+      "description": "A page-qualified region address. Region IDs are only page-local.",
+      "type": "object",
+      "required": [
+        "page_id",
+        "region_id"
+      ],
+      "properties": {
+        "page_id": {
+          "description": "Containing page.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PageId"
+            }
+          ]
+        },
+        "region_id": {
+          "description": "Page-local region.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RegionId"
+            }
+          ]
+        }
+      }
+    },
+    "RefinementScope": {
+      "description": "Scope actually processed by a refinement.",
+      "oneOf": [
+        {
+          "description": "Whole document.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "document"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Explicit pages.",
+          "type": "object",
+          "required": [
+            "kind",
+            "page_ids"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "pages"
+              ]
+            },
+            "page_ids": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/PageId"
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        {
+          "description": "Explicit page-qualified regions.",
+          "type": "object",
+          "required": [
+            "kind",
+            "regions"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "regions"
+              ]
+            },
+            "regions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/PageRegionRef"
+              },
+              "uniqueItems": true
+            }
+          }
+        }
+      ]
+    },
+    "RegionId": {
       "type": "string"
     },
     "RequestId": {

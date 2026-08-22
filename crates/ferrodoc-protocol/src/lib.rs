@@ -434,6 +434,30 @@ mod tests {
         .unwrap();
         assert_eq!(ping.message, HostMessage::Ping);
 
+        let legacy: RequestEnvelope = read_frame(
+            &mut Cursor::new(include_bytes!(
+                "../../../fixtures/protocol/v1/legacy-execute-request.bin"
+            )),
+            MAX_FRAME_LENGTH,
+        )
+        .unwrap();
+        assert!(matches!(
+            legacy.message,
+            HostMessage::Execute(EngineRequest { scope: None, .. })
+        ));
+
+        let scoped: RequestEnvelope = read_frame(
+            &mut Cursor::new(include_bytes!(
+                "../../../fixtures/protocol/v1/scoped-execute-request.bin"
+            )),
+            MAX_FRAME_LENGTH,
+        )
+        .unwrap();
+        assert!(matches!(
+            scoped.message,
+            HostMessage::Execute(EngineRequest { scope: Some(_), .. })
+        ));
+
         assert!(matches!(
             read_frame::<HostMessage>(
                 &mut Cursor::new(include_bytes!(

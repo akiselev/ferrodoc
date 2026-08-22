@@ -44,7 +44,7 @@ pub struct PageRegionRef {
 }
 
 /// Scope actually processed by a refinement.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RefinementScope {
     /// Whole document.

@@ -34,6 +34,7 @@ fn ocrs_engine_passes_common_conformance_when_models_are_provided() {
             expected_digest: Some(Sha256Digest::of_bytes(&raster.rgba)),
         },
         page_index: Some(0),
+        scope: None,
         parameters: BTreeMap::from([
             ("width".into(), serde_json::json!(raster.width)),
             ("height".into(), serde_json::json!(raster.height)),

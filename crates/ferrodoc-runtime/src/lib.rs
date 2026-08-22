@@ -31,6 +31,7 @@ use thiserror::Error;
 
 pub mod cache;
 pub mod doctor;
+pub mod enrichment;
 pub mod hardware;
 pub mod model_store;
 pub mod planner;
@@ -77,6 +78,9 @@ pub enum RuntimeError {
     /// Scheduler admission or observation failed.
     #[error(transparent)]
     Scheduler(#[from] scheduler::SchedulerError),
+    /// A progressive execution request or selected plan violated its semantic contract.
+    #[error("invalid enrichment request: {0}")]
+    InvalidEnrichment(String),
 }
 
 /// Explicit registry of embedded engine implementations.
@@ -628,6 +632,7 @@ fn plan_engine(
             expected_digest: Some(Sha256Digest::of_bytes(&[0])),
         },
         page_index: Some(0),
+        scope: None,
         parameters: BTreeMap::new(),
         deterministic_seed: None,
         deadline: options.deadline,
@@ -975,6 +980,7 @@ fn execute_layout(
         capability: Capability::LayoutDetect,
         input: resolver.scoped.clone(),
         page_index: Some(page_index),
+        scope: None,
         parameters: BTreeMap::from([
             ("page_width".into(), serde_json::json!(bounds.rect.width())),
             (
@@ -1021,6 +1027,7 @@ fn execute_ocr(
         capability: Capability::OcrPage,
         input: resolver.scoped.clone(),
         page_index: Some(input.page_index),
+        scope: None,
         parameters: BTreeMap::from([
             ("width".into(), serde_json::json!(input.width)),
             ("height".into(), serde_json::json!(input.height)),
@@ -1257,6 +1264,27 @@ impl OneBlob {
         Ok(Self {
             scoped,
             digest,
+            bytes,
+        })
+    }
+
+    fn from_scoped(scoped: ScopedBlob, bytes: Vec<u8>) -> Result<Self, EngineError> {
+        if bytes.is_empty()
+            || scoped.range.offset() != 0
+            || scoped.range.end() != bytes.len() as u64
+            || scoped.expected_digest != Some(Sha256Digest::of_bytes(&bytes))
+        {
+            return Err(EngineError::new(
+                EngineErrorCategory::InvalidRequest,
+                false,
+                "enrichment bytes do not match the registered immutable blob",
+            ));
+        }
+        Ok(Self {
+            digest: scoped
+                .expected_digest
+                .expect("validated enrichment blobs have a digest"),
+            scoped,
             bytes,
         })
     }

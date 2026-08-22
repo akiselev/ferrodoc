@@ -46,6 +46,7 @@ fn request(bytes: &[u8]) -> EngineRequest {
             expected_digest: Some(Sha256Digest::of_bytes(bytes)),
         },
         page_index: Some(0),
+        scope: None,
         parameters: BTreeMap::new(),
         deterministic_seed: None,
         deadline: None,

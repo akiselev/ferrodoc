@@ -950,6 +950,15 @@
             }
           ]
         },
+        "geometry_quality": {
+          "description": "Honest precision of the supplied geometry.",
+          "default": "unknown",
+          "allOf": [
+            {
+              "$ref": "#/definitions/GeometryQuality"
+            }
+          ]
+        },
         "id": {
           "description": "Stable evidence identity.",
           "allOf": [
@@ -1119,6 +1128,53 @@
     },
     "EvidenceId": {
       "type": "string"
+    },
+    "GeometryQuality": {
+      "description": "Honest precision of evidence geometry.",
+      "oneOf": [
+        {
+          "description": "Glyph-level geometry from the source or a qualified engine.",
+          "type": "string",
+          "enum": [
+            "glyph"
+          ]
+        },
+        {
+          "description": "Word-level geometry.",
+          "type": "string",
+          "enum": [
+            "word"
+          ]
+        },
+        {
+          "description": "Line-level geometry.",
+          "type": "string",
+          "enum": [
+            "line"
+          ]
+        },
+        {
+          "description": "Region-level geometry.",
+          "type": "string",
+          "enum": [
+            "region"
+          ]
+        },
+        {
+          "description": "Only the containing page is known.",
+          "type": "string",
+          "enum": [
+            "page_only"
+          ]
+        },
+        {
+          "description": "Precision is unknown; callers must not draw a precise highlight.",
+          "type": "string",
+          "enum": [
+            "unknown"
+          ]
+        }
+      ]
     },
     "HealthReport": {
       "description": "Engine health result.",
@@ -1452,7 +1508,7 @@
       ]
     },
     "TableCell": {
-      "description": "A structured table cell.",
+      "description": "A structured table cell with resolvable source evidence.",
       "type": "object",
       "required": [
         "column",
@@ -1474,6 +1530,27 @@
           "format": "uint32",
           "minimum": 0.0
         },
+        "geometry": {
+          "description": "Defensible cell geometry when available.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PageRect"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "geometry_quality": {
+          "description": "Precision of `geometry`.",
+          "default": "unknown",
+          "allOf": [
+            {
+              "$ref": "#/definitions/GeometryQuality"
+            }
+          ]
+        },
         "row": {
           "description": "Zero-based row.",
           "type": "integer",
@@ -1486,9 +1563,48 @@
           "format": "uint32",
           "minimum": 0.0
         },
+        "source_spans": {
+          "description": "Exact text evidence used to reconstruct `text`, in reading order.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TextSourceSpan"
+          }
+        },
         "text": {
           "description": "Cell text.",
           "type": "string"
+        }
+      }
+    },
+    "TextSourceSpan": {
+      "description": "A byte range in an exact text-evidence record.",
+      "type": "object",
+      "required": [
+        "end",
+        "evidence_id",
+        "start"
+      ],
+      "properties": {
+        "end": {
+          "description": "Exclusive UTF-8 byte offset.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "evidence_id": {
+          "description": "Referenced text evidence.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceId"
+            }
+          ]
+        },
+        "start": {
+          "description": "Inclusive UTF-8 byte offset.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
         }
       }
     },

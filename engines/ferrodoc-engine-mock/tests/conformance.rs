@@ -19,6 +19,7 @@ fn mock_engine_passes_common_conformance() {
             expected_digest: Some(Sha256Digest::of_bytes(&input)),
         },
         page_index: Some(0),
+        scope: None,
         parameters: BTreeMap::new(),
         deterministic_seed: None,
         deadline: None,
