@@ -3,13 +3,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ferrodoc_core::{
-    Capability, DocumentStateId, LayerId, PageId, RequestId, ScopedBlob, Sha256Digest, Stage,
+    ArtifactId, Capability, DocumentStateId, LayerId, PageId, RequestId, ScopedBlob, Sha256Digest,
+    Stage,
 };
 use ferrodoc_engine_api::{Engine, EngineCandidate, EngineRequest, HardwareInventory};
 use ferrodoc_ir::{
     CoverageEntry, DOCUMENT_STATE_SCHEMA, DeltaProducer, Document, DocumentStateManifest,
-    EVIDENCE_DELTA_SCHEMA, EvidenceDelta, LayerOwner, OwnedSourceLayer, PageDelta, RefinementScope,
-    RegionEvidenceAddition, SourceLayer, SourceLayerKind, materialize_from_checkpoint,
+    EVIDENCE_DELTA_SCHEMA, EvidenceDelta, LayerOwner, MaterializedIrCheckpoint, OwnedSourceLayer,
+    PageDelta, RefinementScope, RegionEvidenceAddition, SourceLayer, SourceLayerKind,
+    materialize_from_checkpoint,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -406,13 +408,17 @@ impl EnrichmentRuntime {
             state_manifest.evidence_delta_ids.insert(delta.id()?);
             state_manifest.coverage.extend(delta.coverage_delta.clone());
         }
-        let prefix = manifest
-            .evidence_delta_ids
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
         let materialized =
-            materialize_from_checkpoint(document, &prefix, &deltas, &state_manifest)?;
+            materialize_from_checkpoint(document, manifest, &deltas, &state_manifest)?;
+        let checkpoint_digest = Sha256Digest::of_bytes(&materialized.to_canonical_json()?);
+        state_manifest.materialized_ir_checkpoint = Some(MaterializedIrCheckpoint {
+            document_ir_logical_sha256: checkpoint_digest,
+            artifact_id: ArtifactId::derive(&[
+                b"ferrodoc-enrichment-checkpoint/1",
+                checkpoint_digest.as_bytes(),
+            ]),
+            representation: "application/vnd.ferrodoc.document-ir+json;version=1".into(),
+        });
         Ok(EnrichmentExecution {
             deltas,
             state_manifest,

@@ -6,7 +6,7 @@ Status: implemented contract
 
 `EvidenceDelta` is an immutable append-only artifact. It binds the exact source PDF and IR schema, deterministic producer/build/model/configuration identity, stage, processed scope, optional input-state precondition, required evidence, additions, reconciliation hints, diagnostics, and coverage observations. Resource measurements and run timestamps live outside the delta identity.
 
-`EvidenceDelta::artifact_digest` identifies those exact retained bytes. `EvidenceDeltaId` is the logical evidence projection used by states: source/schema, stage, producer, additions, and selection hints. Execution scope, input-state preconditions, prerequisite declarations, diagnostics, and coverage summaries remain in the immutable artifact but cannot rename identical logical evidence reached through another construction path.
+`EvidenceDelta::artifact_digest` identifies those exact retained bytes. `EvidenceDeltaId` is the logical evidence projection used by states: source/schema, stage, producer, additions, and selection hints. Execution scope, input-state preconditions, prerequisite declarations, diagnostics, coverage summaries, and physical render-blob locations remain in the immutable artifact but cannot rename identical logical evidence reached through another construction path.
 
 Additions retain explicit ownership:
 
@@ -35,7 +35,7 @@ Coverage summaries, parent/merge states, checkpoint references, artifact locatio
 
 ## Materialization
 
-`materialize_state` applies a complete delta set to an initial canonical `Document`. `materialize_from_checkpoint` applies only tail deltas while proving that checkpoint-prefix plus tail identities equal the manifest's complete evidence set. Both paths canonicalize page, layer, artifact, region, evidence, selection, and reading-edge order before validating and serializing DocumentIR.
+`materialize_state` applies a complete delta set to an initial canonical `Document`. `materialize_from_checkpoint` accepts the checkpoint's retained state manifest, verifies its source/schema and evidence-set prefix, binds non-empty checkpoints to the manifest's canonical DocumentIR digest, and applies only tail deltas while proving that checkpoint-prefix plus tail identities equal the requested manifest's complete evidence set. Both paths canonicalize page, layer, artifact, region, evidence, selection, and reading-edge order before validating and serializing DocumentIR.
 
 Conformance tests prove:
 

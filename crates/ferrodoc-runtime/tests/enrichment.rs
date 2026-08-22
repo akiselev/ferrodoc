@@ -5,9 +5,10 @@ use std::{
 
 use ferrodoc_core::{
     BackendId, BlobId, BlobRange, Bytes, CURRENT_SCHEMA_VERSION, Capability, CoordinateSpace,
-    CoordinateTransform, DeterministicProvenance, DeviceId, DeviceKind, DocumentId, Estimate,
-    EvidenceId, LayerId, MediaType, MicroUsd, Millis, PageId, PageRect, Probability, Profile, Rect,
-    RegionId, RequestId, ResourceEstimate, ScopedBlob, Sha256Digest, Stage, Unit,
+    CoordinateTransform, DeterministicProvenance, DeviceId, DeviceKind, DocumentId,
+    DocumentStateId, Estimate, EvidenceId, LayerId, MediaType, MicroUsd, Millis, PageId, PageRect,
+    Probability, Profile, Rect, RegionId, RequestId, ResourceEstimate, ScopedBlob, Sha256Digest,
+    Stage, Unit,
 };
 use ferrodoc_engine_api::{
     Engine, EngineCandidate, EngineCompatibility, EngineDescriptor, EngineError, EngineRequest,
@@ -296,6 +297,15 @@ fn executes_only_two_page_qualified_table_targets() {
     assert_eq!(result.document.pages[0].regions[0].evidence.len(), 1);
     assert_eq!(result.document.pages[1].regions[0].evidence.len(), 1);
     assert!(result.document.pages[2].regions[0].evidence.is_empty());
+    assert_eq!(
+        result
+            .state_manifest
+            .materialized_ir_checkpoint
+            .as_ref()
+            .unwrap()
+            .document_ir_logical_sha256,
+        Sha256Digest::of_bytes(&result.document.to_canonical_json().unwrap())
+    );
     assert!(result.deltas.iter().all(|delta| {
         delta.coverage_delta[0].status == "complete"
             && matches!(
@@ -340,6 +350,13 @@ fn wrong_page_and_missing_capability_fail_closed() {
     let wrong = request(&bytes, &manifest, BTreeSet::from([wrong_page]));
     assert!(matches!(
         runtime.plan(&wrong, &document, &manifest),
+        Err(RuntimeError::InvalidEnrichment(_))
+    ));
+
+    let mut stale = request(&bytes, &manifest, BTreeSet::from([targets[0].clone()]));
+    stale.input_state_id = DocumentStateId::derive(&[b"stale-state"]);
+    assert!(matches!(
+        runtime.plan(&stale, &document, &manifest),
         Err(RuntimeError::InvalidEnrichment(_))
     ));
 

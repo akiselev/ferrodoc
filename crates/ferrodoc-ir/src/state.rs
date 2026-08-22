@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ferrodoc_core::{
-    ArtifactId, Capability, DocumentStateId, EvidenceDeltaId, EvidenceId, PageId, RegionId,
+    ArtifactId, BlobId, Capability, DocumentStateId, EvidenceDeltaId, EvidenceId, PageId, RegionId,
     SchemaVersion, Sha256Digest, Stage,
 };
 use schemars::JsonSchema;
@@ -178,13 +178,14 @@ impl EvidenceDelta {
     /// Validates the persistent envelope and returns its logical content identity.
     pub fn id(&self) -> Result<EvidenceDeltaId, IrError> {
         self.validate_envelope()?;
+        let (new_pages, page_additions) = self.logical_additions();
         let projection = (
             self.source_pdf_sha256,
             self.ir_schema,
             self.stage,
             &self.producer,
-            &self.new_pages,
-            &self.page_additions,
+            &new_pages,
+            &page_additions,
             &self.selection_hints,
         );
         let bytes = serde_json::to_vec(&projection)?;
@@ -241,6 +242,25 @@ impl EvidenceDelta {
             ));
         }
         Ok(())
+    }
+
+    fn logical_additions(&self) -> (Vec<Page>, Vec<PageDelta>) {
+        let mut pages = self.new_pages.clone();
+        let mut additions = self.page_additions.clone();
+        let logical_blob = BlobId::new("logical-render-artifact")
+            .expect("static logical render-artifact token is valid");
+        for artifact in pages
+            .iter_mut()
+            .flat_map(|page| page.artifacts.iter_mut())
+            .chain(
+                additions
+                    .iter_mut()
+                    .flat_map(|addition| addition.render_artifacts.iter_mut()),
+            )
+        {
+            artifact.blob_id = logical_blob.clone();
+        }
+        (pages, additions)
     }
 }
 
@@ -355,11 +375,41 @@ pub fn materialize_state(
 /// Materializes from a canonical checkpoint plus the tail deltas not represented by it.
 pub fn materialize_from_checkpoint(
     checkpoint: &Document,
-    checkpoint_delta_ids: &[EvidenceDeltaId],
+    checkpoint_manifest: &DocumentStateManifest,
     tail: &[EvidenceDelta],
     manifest: &DocumentStateManifest,
 ) -> Result<Document, IrError> {
-    materialize_with_prefix(checkpoint, checkpoint_delta_ids, tail, manifest)
+    checkpoint_manifest.id()?;
+    if checkpoint_manifest.source_pdf_sha256 != manifest.source_pdf_sha256
+        || checkpoint_manifest.ir_schema != manifest.ir_schema
+        || !checkpoint_manifest
+            .evidence_delta_ids
+            .is_subset(&manifest.evidence_delta_ids)
+    {
+        return Err(IrError::Invalid(
+            "checkpoint state is not a prefix of the requested state".into(),
+        ));
+    }
+    if !checkpoint_manifest.evidence_delta_ids.is_empty() {
+        let checkpoint_reference = checkpoint_manifest
+            .materialized_ir_checkpoint
+            .as_ref()
+            .ok_or_else(|| {
+                IrError::Invalid("checkpoint state has no materialized IR reference".into())
+            })?;
+        let actual = Sha256Digest::of_bytes(&checkpoint.to_canonical_json()?);
+        if actual != checkpoint_reference.document_ir_logical_sha256 {
+            return Err(IrError::Invalid(
+                "checkpoint document does not match its manifest reference".into(),
+            ));
+        }
+    }
+    let checkpoint_delta_ids = checkpoint_manifest
+        .evidence_delta_ids
+        .iter()
+        .cloned()
+        .collect::<Vec<_>>();
+    materialize_with_prefix(checkpoint, &checkpoint_delta_ids, tail, manifest)
 }
 
 fn materialize_with_prefix(
@@ -414,6 +464,7 @@ fn apply_delta(document: &mut Document, delta: &EvidenceDelta) -> Result<(), IrE
             "delta required evidence is absent from the input document".into(),
         ));
     }
+    validate_delta_scope(document, delta)?;
     if !delta.new_pages.is_empty() && !matches!(delta.scope, RefinementScope::Document) {
         return Err(IrError::Invalid(
             "only a document-scoped delta may introduce pages".into(),
@@ -431,6 +482,33 @@ fn apply_delta(document: &mut Document, delta: &EvidenceDelta) -> Result<(), IrE
             return Err(IrError::Invalid(
                 "page addition lies outside the declared refinement scope".into(),
             ));
+        }
+        if let RefinementScope::Regions { regions } = &delta.scope {
+            let allowed = regions
+                .iter()
+                .filter(|region| region.page_id == addition.page_id)
+                .map(|region| region.region_id.clone())
+                .chain(addition.regions.iter().map(|region| region.id.clone()))
+                .collect::<BTreeSet<_>>();
+            let layer_outside_scope = addition.source_layers.iter().any(|owned| {
+                matches!(
+                    &owned.owner,
+                    LayerOwner::Region { region_id, .. } if !allowed.contains(region_id)
+                )
+            });
+            let evidence_outside_scope = addition
+                .region_evidence
+                .iter()
+                .any(|evidence| !allowed.contains(&evidence.region_id));
+            let edge_outside_scope = addition
+                .reading_order_edges
+                .iter()
+                .any(|edge| !allowed.contains(&edge.before) || !allowed.contains(&edge.after));
+            if layer_outside_scope || evidence_outside_scope || edge_outside_scope {
+                return Err(IrError::Invalid(
+                    "region-scoped delta adds content outside its page-qualified targets".into(),
+                ));
+            }
         }
     }
     for page in &delta.new_pages {
@@ -480,7 +558,25 @@ fn apply_delta(document: &mut Document, delta: &EvidenceDelta) -> Result<(), IrE
         page.reading_order
             .extend(addition.reading_order_edges.clone());
     }
+    let added_regions = delta
+        .page_additions
+        .iter()
+        .flat_map(|addition| {
+            addition.regions.iter().map(|region| PageRegionRef {
+                page_id: addition.page_id.clone(),
+                region_id: region.id.clone(),
+            })
+        })
+        .collect::<BTreeSet<_>>();
     for hint in &delta.selection_hints {
+        if let RefinementScope::Regions { regions } = &delta.scope
+            && !regions.contains(&hint.region)
+            && !added_regions.contains(&hint.region)
+        {
+            return Err(IrError::Invalid(
+                "selection hint lies outside the page-qualified refinement scope".into(),
+            ));
+        }
         let page = document
             .pages
             .iter_mut()
@@ -503,6 +599,48 @@ fn apply_delta(document: &mut Document, delta: &EvidenceDelta) -> Result<(), IrE
         region.selected = Some(hint.selected.clone());
     }
     Ok(())
+}
+
+fn validate_delta_scope(document: &Document, delta: &EvidenceDelta) -> Result<(), IrError> {
+    match &delta.scope {
+        RefinementScope::Document => Ok(()),
+        RefinementScope::Pages { page_ids } => {
+            if page_ids.is_empty()
+                || page_ids
+                    .iter()
+                    .any(|id| !document.pages.iter().any(|page| &page.id == id))
+            {
+                return Err(IrError::Invalid(
+                    "delta page scope is empty or contains an absent page".into(),
+                ));
+            }
+            Ok(())
+        }
+        RefinementScope::Regions { regions } => {
+            if regions.is_empty() {
+                return Err(IrError::Invalid("delta region scope is empty".into()));
+            }
+            for target in regions {
+                let page = document
+                    .pages
+                    .iter()
+                    .find(|page| page.id == target.page_id)
+                    .ok_or_else(|| {
+                        IrError::Invalid("delta region scope contains an absent page".into())
+                    })?;
+                if !page
+                    .regions
+                    .iter()
+                    .any(|region| region.id == target.region_id)
+                {
+                    return Err(IrError::Invalid(
+                        "delta region scope contains an absent region on its qualified page".into(),
+                    ));
+                }
+            }
+            Ok(())
+        }
+    }
 }
 
 fn canonicalize_document(document: &mut Document) {
@@ -906,9 +1044,16 @@ mod tests {
             &fixture.baseline_manifest,
         )
         .unwrap();
+        let mut checkpoint_manifest = fixture.baseline_manifest.clone();
+        let checkpoint_digest = Sha256Digest::of_bytes(&checkpoint.to_canonical_json().unwrap());
+        checkpoint_manifest.materialized_ir_checkpoint = Some(MaterializedIrCheckpoint {
+            document_ir_logical_sha256: checkpoint_digest,
+            artifact_id: ArtifactId::derive(&[b"test-checkpoint"]),
+            representation: "application/vnd.ferrodoc.document-ir+json;version=1".into(),
+        });
         let from_checkpoint = materialize_from_checkpoint(
             &checkpoint,
-            &[fixture.baseline.id().unwrap()],
+            &checkpoint_manifest,
             &[fixture.table, fixture.precision],
             &fixture.final_manifest,
         )
@@ -916,6 +1061,49 @@ mod tests {
         assert_eq!(
             full.to_canonical_json().unwrap(),
             from_checkpoint.to_canonical_json().unwrap()
+        );
+    }
+
+    #[test]
+    fn checkpoint_materialization_rejects_wrong_or_stale_document_bytes() {
+        let fixture = fixture();
+        let checkpoint = materialize_state(
+            &fixture.initial,
+            std::slice::from_ref(&fixture.baseline),
+            &fixture.baseline_manifest,
+        )
+        .unwrap();
+        let mut checkpoint_manifest = fixture.baseline_manifest.clone();
+        checkpoint_manifest.materialized_ir_checkpoint = Some(MaterializedIrCheckpoint {
+            document_ir_logical_sha256: Sha256Digest::of_bytes(
+                &checkpoint.to_canonical_json().unwrap(),
+            ),
+            artifact_id: ArtifactId::derive(&[b"test-checkpoint"]),
+            representation: "application/vnd.ferrodoc.document-ir+json;version=1".into(),
+        });
+
+        let mut unrelated = checkpoint.clone();
+        unrelated.metadata.title = Some("valid but unrelated checkpoint bytes".into());
+        unrelated.validate_evidence_grade().unwrap();
+        assert!(
+            materialize_from_checkpoint(
+                &unrelated,
+                &checkpoint_manifest,
+                &[fixture.table, fixture.precision],
+                &fixture.final_manifest,
+            )
+            .is_err()
+        );
+
+        checkpoint_manifest.source_pdf_sha256 = Sha256Digest::of_bytes(b"stale-source");
+        assert!(
+            materialize_from_checkpoint(
+                &checkpoint,
+                &checkpoint_manifest,
+                &[],
+                &fixture.final_manifest,
+            )
+            .is_err()
         );
     }
 
@@ -983,6 +1171,24 @@ mod tests {
     }
 
     #[test]
+    fn logical_delta_and_state_identity_exclude_render_blob_realization() {
+        let fixture = fixture();
+        let expected_delta = fixture.table.id().unwrap();
+        let expected_artifact = fixture.table.artifact_digest().unwrap();
+        let expected_state = fixture.final_manifest.id().unwrap();
+        let mut relocated = fixture.table;
+        relocated.page_additions[0].render_artifacts[0].blob_id =
+            BlobId::new("relocated-worker-blob").unwrap();
+        assert_eq!(relocated.id().unwrap(), expected_delta);
+        assert_ne!(relocated.artifact_digest().unwrap(), expected_artifact);
+        let relocated_manifest = manifest(
+            fixture.initial.input_digest,
+            &[&fixture.baseline, &relocated, &fixture.precision],
+        );
+        assert_eq!(relocated_manifest.id().unwrap(), expected_state);
+    }
+
+    #[test]
     fn wrong_page_for_page_local_region_is_rejected() {
         let fixture = fixture();
         let baseline = materialize_state(
@@ -1010,6 +1216,55 @@ mod tests {
             target
                 .validate(&baseline, &fixture.baseline_manifest.id().unwrap())
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn region_scoped_delta_cannot_write_to_an_unrequested_region_on_the_same_page() {
+        let mut fixture = fixture();
+        let unrequested = fixture.table.page_additions[0].regions[0].id.clone();
+        fixture.precision.page_additions[0].region_evidence[0].region_id = unrequested;
+        fixture.final_manifest = manifest(
+            fixture.initial.input_digest,
+            &[&fixture.baseline, &fixture.table, &fixture.precision],
+        );
+        let error = materialize_state(
+            &fixture.initial,
+            &[fixture.baseline, fixture.table, fixture.precision],
+            &fixture.final_manifest,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("outside its page-qualified targets")
+        );
+    }
+
+    #[test]
+    fn no_op_delta_still_rejects_an_absent_page_qualified_scope() {
+        let mut fixture = fixture();
+        fixture.precision.scope = RefinementScope::Regions {
+            regions: BTreeSet::from([PageRegionRef {
+                page_id: fixture.page_id.clone(),
+                region_id: RegionId::derive(&[b"absent-region"]),
+            }]),
+        };
+        fixture.precision.page_additions.clear();
+        fixture.final_manifest = manifest(
+            fixture.initial.input_digest,
+            &[&fixture.baseline, &fixture.table, &fixture.precision],
+        );
+        let error = materialize_state(
+            &fixture.initial,
+            &[fixture.baseline, fixture.table, fixture.precision],
+            &fixture.final_manifest,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("absent region on its qualified page")
         );
     }
 

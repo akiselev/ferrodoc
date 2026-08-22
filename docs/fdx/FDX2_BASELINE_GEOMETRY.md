@@ -22,11 +22,11 @@ Replaying the baseline delta from the empty document produces the exact checkpoi
 
 ## Geometry contract
 
-The current `lopdf` native-text API recovers page text but does not expose qualified glyph, word, line, or region boxes. Native PDF evidence therefore carries the page bounds with `geometry_quality = page_only`. Rule-based layout regions remain separate layout evidence with `region` quality. OCR geometry is accepted only at the precision and coordinate space declared by the selected OCR engine. Consumers must not draw a precise native highlight from page-only evidence.
+The current `lopdf` native-text API recovers page text but does not expose qualified glyph, word, line, or region boxes. Native PDF evidence therefore carries the page bounds with `geometry_quality = page_only`. Rule-based layout regions remain separate layout evidence with `region` quality. OCR geometry is accepted only at the precision and coordinate space declared by the selected OCR engine. Image/pixel OCR geometry is validated against declared raster artifact dimensions, while PDF/point geometry is validated against PDF page bounds. Consumers must not draw a precise native highlight from page-only evidence.
 
 ## Acceptance and goldens
 
-The checked-in purpose-built PDFs exercise born-digital, image-only scan, and hybrid orchestration. The FP2 regression engine is deterministic and exists only to prove that every nonblank fixture is rasterized and sent through the OCR boundary; it is not OCR-quality evidence. Tests also prove native/OCR separation, page-only native geometry, stable surveys, a physical checkpoint digest, and full-delta materialization equivalence.
+The checked-in purpose-built PDFs exercise born-digital, image-only scan, and hybrid orchestration. The FP2 regression engine is deterministic and exists only to prove that every nonblank fixture is rasterized and sent through the OCR boundary; it is not OCR-quality evidence. It emits the same image/pixel geometry shape as the real OCR adapters so contract tests do not hide coordinate-space failures. Tests also prove native/OCR separation, page-only native geometry, stable surveys, planner-consumable `complete`/`candidate` coverage (empty discovery does not claim success), a physical checkpoint digest, and full-delta materialization equivalence.
 
 The survey schema and born-digital golden are:
 

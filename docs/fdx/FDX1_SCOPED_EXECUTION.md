@@ -40,11 +40,14 @@ resolver, and accepts either embedded engines or `ProcessEngine`. It does not ex
 host path or add network access.
 
 FP1 emits one immutable `EvidenceDelta` per atomic invocation. Evidence-producing FP1
-stages require one page-qualified region owner; the runtime rejects cross-page geometry
-and creates an explicit region-owned source layer when the engine returns a new layer.
+stages require one page-qualified region owner; the runtime rejects cross-page geometry,
+writes to an untargeted region on the same page, and invalid empty or absent scopes even
+for no-op results. It creates an explicit region-owned source layer when the engine
+returns a new layer.
 Empty discovery-style results record `candidate`, not false `complete`, coverage.
 Returned deltas are applied through `materialize_from_checkpoint`; the result includes
-the new content-identifiable manifest and a canonical DocumentIR conformance view.
+the new content-identifiable manifest, a canonical DocumentIR conformance view, and a
+checkpoint reference binding subsequent refinement to those exact DocumentIR bytes.
 Resource and cache observations remain outside delta/state identity.
 
 ## Compatibility and acceptance evidence

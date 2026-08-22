@@ -11,8 +11,9 @@ use std::{
 };
 
 use ferrodoc_core::{
-    ArtifactId, BlobId, CURRENT_SCHEMA_VERSION, DeterministicProvenance, DocumentId, EvidenceId,
-    LayerId, MediaType, PageId, PageRect, Probability, RegionId, SchemaVersion, Sha256Digest,
+    ArtifactId, BlobId, CURRENT_SCHEMA_VERSION, CoordinateSpace, DeterministicProvenance,
+    DocumentId, EvidenceId, LayerId, MediaType, PageId, PageRect, Probability, Rect, RegionId,
+    SchemaVersion, Sha256Digest, Unit,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -512,11 +513,7 @@ fn validate_page(page: &Page) -> Result<(), IrError> {
                 .geometry_quality
                 .validate(evidence.geometry, page)?;
             if let Some(geometry) = evidence.geometry
-                && !page
-                    .bounds
-                    .rect
-                    .contains(geometry.rect)
-                    .map_err(|error| IrError::Invalid(error.to_string()))?
+                && !geometry_lies_on_page(page, geometry)?
             {
                 return Err(IrError::Invalid(
                     "evidence geometry lies outside page bounds".into(),
@@ -589,6 +586,14 @@ fn validate_table_cells(
                     ));
                 }
                 cell.geometry_quality.validate(cell.geometry, page)?;
+                if let Some(geometry) = cell.geometry
+                    && (geometry.page_index != page.index
+                        || !geometry_lies_on_page(page, geometry)?)
+                {
+                    return Err(IrError::Invalid(
+                        "table cell geometry lies outside its containing page".into(),
+                    ));
+                }
                 if require_source_spans && cell.source_spans.is_empty() {
                     return Err(IrError::Invalid(
                         "table cell has no source-span evidence".into(),
@@ -634,6 +639,40 @@ fn validate_table_cells(
         }
     }
     Ok(())
+}
+
+fn geometry_lies_on_page(page: &Page, geometry: PageRect) -> Result<bool, IrError> {
+    match geometry.rect.space() {
+        CoordinateSpace::Pdf => page
+            .bounds
+            .rect
+            .contains(geometry.rect)
+            .map_err(|error| IrError::Invalid(error.to_string())),
+        CoordinateSpace::Normalized => Ok(true),
+        CoordinateSpace::Image => {
+            for artifact in &page.artifacts {
+                let (Some(width), Some(height)) = (artifact.width, artifact.height) else {
+                    continue;
+                };
+                let bounds = Rect::new(
+                    0.0,
+                    0.0,
+                    f64::from(width),
+                    f64::from(height),
+                    CoordinateSpace::Image,
+                    Unit::Pixel,
+                )
+                .map_err(|error| IrError::Invalid(error.to_string()))?;
+                if bounds
+                    .contains(geometry.rect)
+                    .map_err(|error| IrError::Invalid(error.to_string()))?
+                {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+    }
 }
 
 fn ensure_acyclic(

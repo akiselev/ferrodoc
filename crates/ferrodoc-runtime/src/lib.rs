@@ -773,7 +773,6 @@ fn baseline_state(
     options: &ConversionOptions,
 ) -> Result<BaselineResult, RuntimeError> {
     let document = &conversion.document;
-    let page_ids: BTreeSet<_> = document.pages.iter().map(|page| page.id.clone()).collect();
     let ocr_pages = document
         .pages
         .iter()
@@ -829,41 +828,52 @@ fn baseline_state(
                 .as_slice(),
         ),
     };
-    let coverage_delta = vec![
-        CoverageEntry {
-            capability: Capability::DocumentOpen,
-            scope: RefinementScope::Document,
-            status: format!("surveyed {} pages", document.pages.len()),
-        },
-        CoverageEntry {
-            capability: Capability::TextExtract,
-            scope: RefinementScope::Pages {
-                page_ids: page_ids.clone(),
-            },
-            status: format!("native evidence retained on {native_pages} pages"),
-        },
-        CoverageEntry {
-            capability: Capability::OcrPage,
-            scope: RefinementScope::Pages {
-                page_ids: page_ids.clone(),
-            },
-            status: format!(
-                "OCR evidence attempted on {ocr_pages} nonblank pages; survey-proven blank pages skipped"
-            ),
-        },
-        CoverageEntry {
-            capability: Capability::LayoutDetect,
-            scope: RefinementScope::Pages {
-                page_ids: page_ids.clone(),
-            },
-            status: "coarse regions retained where native text or OCR produced evidence".into(),
-        },
-        CoverageEntry {
-            capability: Capability::ReadingOrderDetect,
-            scope: RefinementScope::Pages { page_ids },
-            status: "deterministic source-order edges retained between coarse regions".into(),
-        },
-    ];
+    let mut coverage_delta = vec![CoverageEntry {
+        capability: Capability::DocumentOpen,
+        scope: RefinementScope::Document,
+        status: "complete".into(),
+    }];
+    for capability in [
+        Capability::TextExtract,
+        Capability::OcrPage,
+        Capability::LayoutDetect,
+        Capability::ReadingOrderDetect,
+    ] {
+        for (complete, status) in [(true, "complete"), (false, "candidate")] {
+            let page_ids = document
+                .pages
+                .iter()
+                .filter(|page| {
+                    let has_stage = |stage| {
+                        page.regions
+                            .iter()
+                            .flat_map(|region| &region.evidence)
+                            .any(|evidence| evidence.provenance.stage == stage)
+                    };
+                    let proven_blank = survey.pages.iter().any(|item| {
+                        item.page_index == page.index && item.content_hint == PageContentHint::Blank
+                    });
+                    let is_complete = match capability {
+                        Capability::TextExtract => has_stage(Stage::NativeExtract) || proven_blank,
+                        Capability::OcrPage => has_stage(Stage::Ocr) || proven_blank,
+                        Capability::LayoutDetect | Capability::ReadingOrderDetect => {
+                            !page.regions.is_empty() || proven_blank
+                        }
+                        _ => unreachable!("bounded baseline capability set"),
+                    };
+                    is_complete == complete
+                })
+                .map(|page| page.id.clone())
+                .collect::<BTreeSet<_>>();
+            if !page_ids.is_empty() {
+                coverage_delta.push(CoverageEntry {
+                    capability,
+                    scope: RefinementScope::Pages { page_ids },
+                    status: status.into(),
+                });
+            }
+        }
+    }
     let delta = EvidenceDelta {
         delta_schema: EVIDENCE_DELTA_SCHEMA.into(),
         source_pdf_sha256: document.input_digest,
@@ -1875,6 +1885,8 @@ mod tests {
             let rgba = context.blobs.resolve(&request.input)?;
             assert!(!rgba.is_empty());
             let page_index = request.page_index.unwrap();
+            let width = u32::try_from(request.parameters["width"].as_u64().unwrap()).unwrap();
+            let height = u32::try_from(request.parameters["height"].as_u64().unwrap()).unwrap();
             self.pages.lock().unwrap().push(page_index);
             let provenance = DeterministicProvenance {
                 schema_version: CURRENT_SCHEMA_VERSION,
@@ -1894,8 +1906,20 @@ mod tests {
                 id: EvidenceId::derive(&[layer_id.as_str().as_bytes(), text.as_bytes()]),
                 layer_id: layer_id.clone(),
                 content: EvidenceContent::Text { text },
-                geometry: None,
-                geometry_quality: GeometryQuality::Unknown,
+                geometry: Some(PageRect {
+                    page_index,
+                    rect: Rect::new(
+                        0.0,
+                        0.0,
+                        f64::from(width),
+                        f64::from(height),
+                        CoordinateSpace::Image,
+                        Unit::Pixel,
+                    )
+                    .unwrap(),
+                    source_transform: CoordinateTransform::IDENTITY,
+                }),
+                geometry_quality: GeometryQuality::Region,
                 confidence: None,
                 provenance,
                 engine_metadata: BTreeMap::from([(
@@ -2055,6 +2079,18 @@ mod tests {
             assert_eq!(result.summary.nonblank_pages, 1);
             assert_eq!(result.summary.ocr_pages, 1);
             assert!(result.summary.evidence_bytes.get() > 0);
+            for capability in [
+                Capability::DocumentOpen,
+                Capability::OcrPage,
+                Capability::LayoutDetect,
+                Capability::ReadingOrderDetect,
+            ] {
+                assert!(
+                    result.manifest.coverage.iter().any(|entry| {
+                        entry.capability == capability && entry.status == "complete"
+                    })
+                );
+            }
             eprintln!(
                 "fp2-fixture kind={:?} evidence_bytes_per_page={:.1} searchable={}/{} layout={}/{} geometry_coverage={:.3}",
                 result.survey.pages[0].content_hint,
@@ -2066,6 +2102,10 @@ mod tests {
                 result.summary.useful_provenance_geometry_coverage,
             );
             let has_native = result.summary.native_text_pages == 1;
+            assert!(result.manifest.coverage.iter().any(|entry| {
+                entry.capability == Capability::TextExtract
+                    && entry.status == if has_native { "complete" } else { "candidate" }
+            }));
             assert_eq!(
                 result
                     .delta
@@ -2089,6 +2129,14 @@ mod tests {
                     .iter()
                     .any(|layer| layer.kind == SourceLayerKind::Ocr)
             );
+            let ocr = result.conversion.document.pages[0]
+                .regions
+                .iter()
+                .flat_map(|region| &region.evidence)
+                .find(|evidence| evidence.provenance.stage == Stage::Ocr)
+                .unwrap();
+            assert_eq!(ocr.geometry_quality, GeometryQuality::Region);
+            assert_eq!(ocr.geometry.unwrap().rect.space(), CoordinateSpace::Image);
             assert_eq!(
                 Sha256Digest::of_bytes(&result.checkpoint_json),
                 result
